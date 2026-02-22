@@ -24,8 +24,10 @@ from textual.cache import LRUCache
 from textual.reactive import var, Initialize
 from textual.content import Content, Span
 from textual.strip import Strip
+from textual.style import Style
 from textual.widget import Widget
 from textual import widgets
+from textual.visual import RenderOptions
 from textual.widgets import OptionList, Input, DirectoryTree
 from textual.widgets.option_list import Option
 
@@ -38,7 +40,51 @@ from toad._path_fuzzy_search import PathFuzzySearch
 from toad._path_match import match_path
 
 
+class PathContent(Content):
+
+    def render_strips(
+        self, width: int, height: int | None, style: Style, options: RenderOptions
+    ) -> list[Strip]:
+        """Render the Visual into an iterable of strips. Part of the Visual protocol.
+
+        Args:
+            width: Width of desired render.
+            height: Height of desired render or `None` for any height.
+            style: The base style to render on top of.
+            options: Additional render options.
+
+        Returns:
+            An list of Strips.
+        """
+        if not width:
+            return []
+
+        line = self
+        if line.cell_length > width:
+            while line.cell_length >= width - 3 and "/" in line.plain:
+                line = line[line.plain.find("/") + 1 :]
+            line = Content.assemble(("⋯ ", "$text-error"), line)
+
+        lines = line._wrap_and_format(
+            width,
+            tab_size=8,
+            overflow="clip",
+            no_wrap=True,
+            selection=options.selection,
+            selection_style=options.selection_style,
+            post_style=options.post_style,
+            get_style=options.get_style,
+        )
+
+        if height is not None:
+            lines = lines[:height]
+
+        strip_lines = [Strip(*line.to_strip(style)) for line in lines]
+        return strip_lines
+
+
 class FuzzyPathOptionList(OptionList):
+    """Option list with loading indicator override."""
 
     def get_loading_widget(self) -> Widget:
         from textual.widgets import LoadingIndicator
@@ -221,8 +267,13 @@ class PathSearch(containers.VerticalGroup):
         ]
 
         def highlight_offsets(path: Content, offsets: Sequence[int]) -> Content:
-            return path.add_spans(
+            highlighted_path = path.add_spans(
                 [Span(offset, offset + 1, "underline") for offset in offsets]
+            )
+            return PathContent(
+                highlighted_path.plain,
+                list(highlighted_path.spans),
+                highlighted_path.cell_length,
             )
 
         self.option_list.set_options(
@@ -379,13 +430,17 @@ class PathSearch(containers.VerticalGroup):
             self.option_list.set_loading(False)
             raise
 
-    def highlight_path(self, path: str) -> Content:
-        content = Content.styled(path, "dim $text")
+    def highlight_path(self, path: str) -> PathContent:
+        content = Content.styled(path, "$text 50%")
         if os.path.split(path)[-1].startswith("."):
-            return content
-        content = content.highlight_regex("[^/]*?$", style="not dim $text-primary")
+            return PathContent(
+                content.plain, list(content.spans), cell_length=content.cell_length
+            )
+        content = content.highlight_regex("[^/]*?$", style="$text-primary")
         content = content.highlight_regex(r"\.[^/]*$", style="italic")
-        return content
+        return PathContent(
+            content.plain, list(content.spans), cell_length=content.cell_length
+        )
 
     @work
     async def watch_paths(self, paths: list[Path]) -> None:

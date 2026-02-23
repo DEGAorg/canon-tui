@@ -14,8 +14,7 @@ LoadingIndicator {
 Throbber {
     width: 100%;
     height: 1;    
-    
-    overlay: screen;
+    layer: base;    
     visibility: hidden;
     &.-busy {
         visibility: visible;

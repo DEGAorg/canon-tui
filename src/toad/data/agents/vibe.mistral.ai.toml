@@ -17,9 +17,11 @@ run_command."*" = "vibe-acp"
 recommended = true
 
 help = '''
-# Devstral2 Mistral Vibe CLI
+# Mistral's open-source CLI coding assistant.
 
-Today, we're releasing Devstral 2—our next-generation coding model family available in two sizes: Devstral 2 (123B) and Devstral Small 2 (24B). Devstral 2 ships under a modified MIT license, while Devstral Small 2 uses Apache 2.0. Both are open-source and permissively licensed to accelerate distributed intelligence.
+Mistral Vibe is a command-line coding assistant powered by Mistral's models.
+
+Vibe provides a conversational interface to your codebase, allowing you to use natural language to explore, modify, and interact with your projects through a powerful set of tools.
 '''
 
 

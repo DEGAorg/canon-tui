@@ -348,9 +348,9 @@ class DiffView(containers.VerticalGroup):
         spans_b: list[Span] = []
         for tag, i1, i2, j1, j2 in sequence_matcher.get_opcodes():
             if tag in {"delete", "replace"}:
-                spans_a.append(Span(i1, i2, "on $error 40%"))
+                spans_a.append(Span(i1, i2, "on $error 30%"))
             if tag in {"insert", "replace"}:
-                spans_b.append(Span(j1, j2, "on $success 40%"))
+                spans_b.append(Span(j1, j2, "on $success 30%"))
         diffed_lines_a = code_a.add_spans(spans_a).split("\n")
         diffed_lines_b = code_b.add_spans(spans_b).split("\n")
         return diffed_lines_a, diffed_lines_b
@@ -659,7 +659,9 @@ class DiffView(containers.VerticalGroup):
                 scroll_container_b.scroll_link = scroll_container_a
 
             if not last:
-                yield Static("⋮", classes="ellipsis")
+                with containers.HorizontalGroup():
+                    yield Static("⋮", classes="ellipsis")
+                    yield Static("⋮", classes="ellipsis")
 
 
 if __name__ == "__main__":

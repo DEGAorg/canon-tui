@@ -28,13 +28,7 @@ Plan {
     color: $primary;
     border: none;
     background: transparent;
-    # border: round $secondary 50%;
-    
-    &.-all-complete {                
-        border: round $success 50%;                                
-    }
-    
-
+          
     padding: 0 1 0 0;        
     height: auto;                        
     grid-size: 2;
@@ -239,18 +233,32 @@ Conversation {
         background: $primary 10%;        
         padding: 1 1 0 1;              
         border-title-style: bold;
+
         &.-success {            
+            border: panel $success-muted;                  
+            border-title-color: $text-success;
+            background: $success 7%;        
             opacity: 90%;
             border-title-style: not bold;                                 
+            &:light {
+                border: panel $success 50%;                  
+                border-title-color: auto 90%;
+            }
         }
         
-        &.-error {
-            opacity: 80%;
-            border: panel $error 40%;                              
-            border-title-style: not bold;               
+
+        &.-error {            
+            border: panel $error-muted;                  
             border-title-color: $text-error;
-            background: $error 10%;            
-        }             
+            background: $error 7%;        
+            opacity: 90%;
+            border-title-style: not bold;                                 
+            &:light {
+                border: panel $error-muted;                  
+                border-title-color: auto 90%;
+            }
+        }
+                  
     }
          
     UserInput {

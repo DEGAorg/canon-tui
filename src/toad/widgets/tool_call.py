@@ -116,13 +116,15 @@ class ToolCall(containers.VerticalGroup):
         tool_call = self.tool_call
         assert tool_call is not None
         content: list[protocol.ToolCallContent] = tool_call.get("content", None) or []
-        title = tool_call.get("title", "title")
+
+        self.set_class(tool_call.get("status") == "failed", "-failed")
 
         self.has_content = False
         content_update = list(self._compose_content(content))
 
-        yield (header := ToolCallHeader(self.tool_call_header_content, markup=False))
-        header.tooltip = title
+        yield ToolCallHeader(self.tool_call_header_content, markup=False).with_tooltip(
+            "Expand to see full title"
+        )
         with containers.VerticalGroup(id="tool-content"):
             yield from content_update
         self.check_expand()
@@ -171,7 +173,7 @@ class ToolCall(containers.VerticalGroup):
                 else "[$text-secondary 30%]▶ "
             )
 
-        header = Content.assemble(expand_icon, "🔧 ", (title, "$text-secondary"))
+        header = Content.assemble(expand_icon, "🔧 ", title)
 
         if status == "pending":
             header += Content.assemble(" ⌛")

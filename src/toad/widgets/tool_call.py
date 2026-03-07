@@ -76,12 +76,14 @@ class ToolCall(containers.VerticalGroup):
         self.set_reactive(ToolCall.tool_call, tool_call)
         super().__init__(id=id, classes=classes)
 
-    def update_tool_call(self, tool_call: protocol.ToolCall) -> None:
-        async def do_update():
-            self.tool_call = tool_call
-            await self.recompose()
+    async def update_tool_call(self, tool_call: protocol.ToolCall) -> None:
+        """Update the tool call and recompose the widget.
 
-        self.call_after_refresh(do_update)
+        Args:
+            tool_call: New Tool call data.
+        """
+        self.tool_call = tool_call
+        await self.recompose()
 
     def get_block_menu(self) -> Iterable[MenuItem]:
         if self.expanded:

@@ -217,7 +217,7 @@ Conversation {
             pointer: pointer;       
             width: auto;
             max-width: 1fr;   
-            margin: 0 1 0 0;         
+            margin: 0 1 0 0;    
         }        
     }
     padding-left: 1;  

@@ -1004,7 +1004,7 @@ class Conversation(containers.Vertical):
             await self.post(ToolCall(tool_call, id=message.tool_id))
         else:
             if existing_tool_call is not None:
-                existing_tool_call.update_tool_call(tool_call)
+                await existing_tool_call.update_tool_call(tool_call)
 
     @on(acp_messages.AvailableCommandsUpdate)
     async def on_acp_available_commands_update(

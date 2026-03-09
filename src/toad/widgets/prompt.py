@@ -302,6 +302,21 @@ See on-screen instructions for details.
             return
         return super().action_delete_left()
 
+    def action_cursor_line_end(self, select: bool = False) -> None:
+        """Move the cursor to the end of the line."""
+        if not self._has_cursor:
+            self.scroll_end()
+            return
+        location = self.get_cursor_line_end_location()
+        if location == self.cursor_location:
+            # If the cursor is already at the end, then we assume the user wants to
+            # scroll the conversation to the end
+            from toad.widgets.conversation import Conversation
+
+            self.query_ancestor(Conversation).window.anchor()
+        else:
+            self.move_cursor(location, select=select)
+
     async def action_tab_complete(self) -> None:
         if not self.shell_mode:
             return

@@ -199,12 +199,6 @@ class ToolCall(containers.VerticalGroup):
         else:
             self.call_after_refresh(conversation.cursor.update_follow)
 
-    # def watch_has_content(self) -> None:
-    #     try:
-    #         self.query_one(ToolCallHeader).update(self.tool_call_header_content)
-    #     except NoMatches:
-    #         pass
-
     @on(events.Click, "ToolCallHeader")
     def on_click_tool_call_header(self, event: events.Click) -> None:
         event.stop()

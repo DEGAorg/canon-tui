@@ -53,6 +53,21 @@ async def get_agent_data(launch_agent) -> Agent | None:
     return agents.get(launch_agent)
 
 
+def _read_default_agent() -> str:
+    """Read the default_agent setting from toad.json if it exists."""
+    import json
+    from toad.paths import get_config
+
+    try:
+        settings_path = get_config() / "toad.json"
+        if settings_path.exists():
+            settings = json.loads(settings_path.read_text("utf-8"))
+            return settings.get("agent", {}).get("default_agent", "")
+    except Exception:
+        pass
+    return ""
+
+
 class DefaultCommandGroup(click.Group):
     def parse_args(self, ctx, args):
         if "--help" in args or "-h" in args:
@@ -120,11 +135,6 @@ def main(ctx, version):
     help="Public URL to use in conjunction with --serve",
 )
 @click.option("-s", "--serve", is_flag=True, help="Serve Toad as a web application")
-@click.option(
-    "--conductor",
-    is_flag=True,
-    help="Skip store and launch Claude Code directly",
-)
 def run(
     port: int,
     host: str,
@@ -133,7 +143,6 @@ def run(
     project_dir_option: str | None = None,
     agent: str = "1",
     public_url: str | None = None,
-    conductor: bool = False,
 ):
     """Run an installed agent (same as `toad PATH`)."""
 
@@ -141,8 +150,9 @@ def run(
         project_dir = project_dir_option
     check_directory(project_dir)
 
-    if conductor:
-        agent = "claude"
+    # Check for saved default agent if none specified via CLI
+    if not agent:
+        agent = _read_default_agent()
 
     if agent:
         import asyncio
@@ -150,14 +160,6 @@ def run(
         agent_data = asyncio.run(get_agent_data(agent))
     else:
         agent_data = None
-
-    if conductor and agent_data is None:
-        print("error: Claude Code agent not found.")
-        print("Install Claude Code:")
-        print("  curl -fsSL https://claude.ai/install.sh | bash")
-        print("Install ACP adapter:")
-        print("  npm install -g @zed-industries/claude-code-acp")
-        sys.exit(1)
 
     app = ToadApp(
         mode=None if agent_data else "store",

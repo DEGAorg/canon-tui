@@ -733,8 +733,12 @@ class ToadApp(App, inherit_bindings=False):
 
     @work
     async def action_settings(self) -> None:
-        await self.push_screen_wait("settings")
+        result = await self.push_screen_wait("settings")
         await self.save_settings()
+        if result == "switch_agent":
+            self.settings.set("agent.default_agent", "")
+            await self.save_settings()
+            await self.switch_mode("store")
 
     async def action_quit(self) -> None:
         """An [action](/guide/actions) to quit the app as soon as possible."""
@@ -805,6 +809,12 @@ class ToadApp(App, inherit_bindings=False):
 
     @on(messages.LaunchAgent)
     def on_launch_agent(self, message: messages.LaunchAgent) -> None:
+        # Save as default agent on fresh launches (not session resumes)
+        if message.session_id is None and message.pk is None:
+            current_default = self.settings.get("agent.default_agent", str)
+            if current_default != message.identity:
+                self.settings.set("agent.default_agent", message.identity)
+                self.call_later(self.save_settings)
         self.launch_agent(
             message.identity,
             agent_session_id=message.session_id,

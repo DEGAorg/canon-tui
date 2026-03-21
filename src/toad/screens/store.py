@@ -367,12 +367,6 @@ class StoreScreen(Screen):
             "Focus Previous",
             group=FOCUS_GROUP,
         ),
-        Binding(
-            "null",
-            "quick_launch",
-            "Quick launch",
-            key_display="1-9 a-f",
-        ),
         Binding("ctrl+r", "resume", "Resume", tooltip="Resume a previous session"),
         Binding(
             "ctrl+d",
@@ -382,8 +376,6 @@ class StoreScreen(Screen):
         ),
     ]
 
-    agents_view = getters.query_one("#agents-view", AgentGridSelect)
-    launcher = getters.query_one("#launcher", Launcher)
     container = getters.query_one("#container", Container)
 
     project_dir: reactive[Path] = reactive(Path)
@@ -449,59 +441,24 @@ class StoreScreen(Screen):
 
         webbrowser.open(url)
 
+    ALLOWED_AGENTS = {"claude.com", "geminicli.com", "openai.com"}
+
     def compose_agents(self) -> ComposeResult:
         agents = self._agents
 
-        if CONDUCTOR_IDENTITY in agents:
-            yield ConductorCard(id="conductor-card")
-
-        yield Launcher(agents, id="launcher")
-
         ordered_agents = sorted(
-            agents.values(), key=lambda agent: agent["name"].casefold()
+            (a for a in agents.values() if a["identity"] in self.ALLOWED_AGENTS),
+            key=lambda agent: agent["name"].casefold(),
         )
 
-        recommended_agents = [
-            agent for agent in ordered_agents if agent.get("recommended", False)
-        ]
-        # Shuffle reccomended agents so none has priority
-        shuffle(recommended_agents)
-        if recommended_agents:
-            with containers.VerticalGroup(id="sponsored-agents", classes="recommended"):
+        if ordered_agents:
+            with containers.VerticalGroup():
                 yield widgets.Static(
-                    "[$text-warning u]Recommended[/] [$text-secondary 100% i]Best of the bunch",
+                    "[$text-warning u]Select your coding agent[/] [$text-secondary i]Choose once, launch always",
                     classes="heading",
                 )
                 with AgentGridSelect(classes="agents-picker", min_column_width=40):
-                    for agent in recommended_agents:
-                        yield AgentItem(agent)
-                    yield widgets.Static(
-                        "[$text-warning]Your agent here[/] — support development of Toad by [@click=screen.url('https://github.com/sponsors/willmcgugan')]sponsoring[/] this project",
-                        classes="sponsor-me",
-                    )
-
-        chat_bots = [
-            agent for agent in ordered_agents if agent["type"] in {"chat", "assistant"}
-        ]
-        if chat_bots:
-            yield widgets.Static(
-                "[$text-warning u]Chat & Assistants[/] [$text-secondary 100% i]Biddi-biddi-biddi",
-                classes="heading",
-            )
-            with containers.VerticalGroup():
-                with AgentGridSelect(classes="agents-picker", min_column_width=40):
-                    for agent in chat_bots:
-                        yield AgentItem(agent)
-
-        coding_agents = [agent for agent in ordered_agents if agent["type"] == "coding"]
-        if coding_agents:
-            yield widgets.Static(
-                "[$text-warning u]Coding agents[/] [$text-secondary i]Build software with AI",
-                classes="heading",
-            )
-            with containers.VerticalGroup():
-                with AgentGridSelect(classes="agents-picker", min_column_width=40):
-                    for agent in coding_agents:
+                    for agent in ordered_agents:
                         yield AgentItem(agent)
 
     def move_focus(self, direction: Literal[-1] | Literal[+1]) -> None:
@@ -592,41 +549,7 @@ class StoreScreen(Screen):
                 first_grid.focus(scroll_visible=False)
 
     async def setting_updated(self, setting: tuple[str, object]) -> None:
-        key, value = setting
-        if key == "launcher.agents":
-            await self.launcher.recompose()
-
-            def focus_screen():
-                try:
-                    self.screen.query(GridSelect).focus()
-                except Exception:
-                    pass
-
-            self.call_later(focus_screen)
-
-    def on_key(self, event: events.Key) -> None:
-        if event.character is None:
-            return
-        LAUNCHER_KEYS = "123456789abcdef"
-
-        if event.character in LAUNCHER_KEYS:
-            launch_item_offset = LAUNCHER_KEYS.find(event.character)
-            try:
-                self.launcher.grid_select.children[launch_item_offset]
-            except IndexError:
-                self.notify(
-                    f"No agent on key [b]{LAUNCHER_KEYS[launch_item_offset]}",
-                    title="Quick launch",
-                    severity="error",
-                )
-                self.app.bell()
-                return
-            self.launcher.focus()
-            self.launcher.highlighted = launch_item_offset
-            self.launcher.launch_highlighted()
-
-    def action_quick_launch(self) -> None:
-        self.launcher.focus()
+        pass
 
     @work
     async def action_resume(self) -> None:

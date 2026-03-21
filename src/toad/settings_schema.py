@@ -8,6 +8,13 @@ SCHEMA: list[SchemaDict] = [
         "type": "object",
         "fields": [
             {
+                "key": "switch_agent",
+                "title": "Switch agent",
+                "help": "Toggle to clear your default agent and pick a new one.",
+                "type": "boolean",
+                "default": False,
+            },
+            {
                 "key": "theme",
                 "title": "Theme",
                 "help": "One of the builtin Textual themes.",
@@ -221,6 +228,13 @@ SCHEMA: list[SchemaDict] = [
         "type": "object",
         "fields": [
             {
+                "key": "default_agent",
+                "title": "Default agent",
+                "type": "string",
+                "default": "",
+                "editable": False,
+            },
+            {
                 "key": "thoughts",
                 "title": "Agent thoughts",
                 "help": "Show agent's 'thoughts' in the conversation?",
@@ -338,7 +352,7 @@ SCHEMA: list[SchemaDict] = [
                 "title": "Agents to show in the launcher",
                 "type": "text",
                 "default": "",
-            }
+            },
         ],
     },
     {

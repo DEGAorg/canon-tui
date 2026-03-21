@@ -339,6 +339,9 @@ class MainScreen(Screen, can_focus=False):
         self.conversation.focus_prompt()
 
     async def action_go_home(self) -> None:
+        """Clear default agent and return to agent picker."""
+        self.app.settings.set("agent.default_agent", "")
+        await self.app.save_settings()
         await self.app.switch_mode("store")
 
     @on(SideBar.Dismiss)

@@ -25,7 +25,8 @@ from toad.widgets.plan import Plan
 from toad.widgets.throbber import Throbber
 from toad.widgets.conversation import Conversation
 from toad.widgets.project_directory_tree import ProjectDirectoryTree
-from toad.widgets.side_bar import SideBar
+from toad.widgets.side_bar import SideBar, SideBarCollapsible
+from toad.widgets.github_state import GitHubStateWidget
 
 
 class ModeProvider(Provider):
@@ -73,6 +74,7 @@ class MainScreen(Screen, can_focus=False):
     SESSION_NAVIGATION_GROUP = Binding.Group(description="Sessions")
     BINDINGS = [
         Binding("ctrl+b,f20", "show_sidebar", "Sidebar"),
+        Binding("ctrl+g", "toggle_github", "GitHub"),
         Binding("ctrl+h", "go_home", "Home"),
         Binding(
             "ctrl+left_square_bracket",
@@ -147,6 +149,10 @@ class MainScreen(Screen, can_focus=False):
                         id="project_directory_tree",
                     ),
                     flex=True,
+                ),
+                SideBar.Panel(
+                    "GitHub",
+                    GitHubStateWidget(id="github_state"),
                 ),
             )
             yield Conversation(
@@ -224,7 +230,6 @@ class MainScreen(Screen, can_focus=False):
         session_count = session_tracker.session_count
 
         if session_count <= 1:
-
             session_tracker.close_session(current_mode)
             await self.app.switch_mode("store")
 
@@ -260,6 +265,17 @@ class MainScreen(Screen, can_focus=False):
 
     def action_show_sidebar(self) -> None:
         self.side_bar.query_one("Collapsible CollapsibleTitle").focus()
+
+    def action_toggle_github(self) -> None:
+        """Toggle the GitHub panel open/closed and focus it."""
+        collapsibles = self.side_bar.query(SideBarCollapsible)
+        for collapsible in collapsibles:
+            if collapsible.title == "GitHub":
+                collapsible.collapsed = not collapsible.collapsed
+                if not collapsible.collapsed:
+                    github_widget = self.query_one("#github_state", GitHubStateWidget)
+                    github_widget.focus()
+                break
 
     def action_focus_prompt(self) -> None:
         self.conversation.focus_prompt()

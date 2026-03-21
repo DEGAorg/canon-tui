@@ -271,17 +271,54 @@ class MainScreen(Screen, can_focus=False):
         collapsibles = self.side_bar.query(SideBarCollapsible)
         for collapsible in collapsibles:
             if collapsible.title == "GitHub":
-                collapsible.collapsed = not collapsible.collapsed
-                if not collapsible.collapsed:
-                    github_widget = self.query_one(
-                        "#github_state", GitHubStateWidget
-                    )
-                    github_widget.focus()
+                if collapsible.collapsed:
+                    self._open_github_panel()
+                else:
+                    self._close_github_panel()
+                return
+        self._open_github_panel()
+
+    @on(acp_messages.OpenPanel)
+    def on_acp_open_panel(self, message: acp_messages.OpenPanel) -> None:
+        """Agent requests opening a sidebar panel."""
+        message.stop()
+        panel_id = message.panel_id
+        if panel_id == "github":
+            self._open_github_panel(message.context)
+
+    @on(acp_messages.ClosePanel)
+    def on_acp_close_panel(self, message: acp_messages.ClosePanel) -> None:
+        """Agent requests closing a sidebar panel."""
+        message.stop()
+        panel_id = message.panel_id
+        if panel_id == "github":
+            self._close_github_panel()
+
+    def _open_github_panel(
+        self, context: dict[str, object] | None = None
+    ) -> None:
+        """Mount and expand the GitHub panel in the sidebar.
+
+        If the panel already exists, just expand and focus it.
+        Accepts optional context with a 'project_path' override.
+        """
+        project_path = str(self.project_path)
+        if context and "project_path" in context:
+            project_path = str(context["project_path"])
+
+        collapsibles = self.side_bar.query(SideBarCollapsible)
+        for collapsible in collapsibles:
+            if collapsible.title == "GitHub":
+                collapsible.collapsed = False
+                github_widget = self.query_one(
+                    "#github_state", GitHubStateWidget
+                )
+                github_widget.focus()
                 return
 
         collapsible = SideBarCollapsible(
             GitHubStateWidget(
-                project_path=str(self.project_path),
+                project_path=project_path,
                 id="github_state",
             ),
             title="GitHub",
@@ -289,6 +326,14 @@ class MainScreen(Screen, can_focus=False):
             classes="-fixed",
         )
         self.side_bar.mount(collapsible)
+
+    def _close_github_panel(self) -> None:
+        """Collapse the GitHub panel if it exists."""
+        collapsibles = self.side_bar.query(SideBarCollapsible)
+        for collapsible in collapsibles:
+            if collapsible.title == "GitHub":
+                collapsible.collapsed = True
+                return
 
     def action_focus_prompt(self) -> None:
         self.conversation.focus_prompt()

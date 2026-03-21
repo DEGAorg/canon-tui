@@ -129,6 +129,33 @@ class DirectoryDisplay(containers.HorizontalGroup):
         )
 
 
+CONDUCTOR_IDENTITY = "claude.com"
+
+
+class ConductorCard(containers.HorizontalGroup):
+    """Pinned shortcut card that launches Claude Code directly."""
+
+    BINDINGS = [
+        Binding("enter", "launch", "Launch"),
+        Binding("space", "launch", "Launch"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        yield widgets.Label(
+            Content.from_markup(
+                "[$text-warning bold]Conductor[/]"
+                " [$text-secondary dim]Launch Claude Code directly[/]"
+            ),
+            id="conductor-label",
+        )
+
+    def action_launch(self) -> None:
+        self.screen.post_message(messages.LaunchAgent(CONDUCTOR_IDENTITY))
+
+    def on_click(self) -> None:
+        self.action_launch()
+
+
 class AgentItem(containers.VerticalGroup):
     """An entry in the Agent grid select."""
 
@@ -424,6 +451,9 @@ class StoreScreen(Screen):
 
     def compose_agents(self) -> ComposeResult:
         agents = self._agents
+
+        if CONDUCTOR_IDENTITY in agents:
+            yield ConductorCard(id="conductor-card")
 
         yield Launcher(agents, id="launcher")
 

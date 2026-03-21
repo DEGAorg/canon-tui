@@ -298,6 +298,13 @@ class Agent(AgentBase):
             case {"sessionUpdate": "current_mode_update", "currentModeId": mode_id}:
                 self.post_message(messages.ModeUpdate(mode_id))
 
+            case {"sessionUpdate": "open_panel", "panelId": panel_id}:
+                context = update.get("context")
+                self.post_message(messages.OpenPanel(panel_id, context))
+
+            case {"sessionUpdate": "close_panel", "panelId": panel_id}:
+                self.post_message(messages.ClosePanel(panel_id))
+
         if status_line is not None:
             self.post_message(messages.UpdateStatusLine(status_line))
 

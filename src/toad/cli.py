@@ -120,6 +120,11 @@ def main(ctx, version):
     help="Public URL to use in conjunction with --serve",
 )
 @click.option("-s", "--serve", is_flag=True, help="Serve Toad as a web application")
+@click.option(
+    "--conductor",
+    is_flag=True,
+    help="Skip store and launch Claude Code directly",
+)
 def run(
     port: int,
     host: str,
@@ -128,6 +133,7 @@ def run(
     project_dir_option: str | None = None,
     agent: str = "1",
     public_url: str | None = None,
+    conductor: bool = False,
 ):
     """Run an installed agent (same as `toad PATH`)."""
 
@@ -135,12 +141,23 @@ def run(
         project_dir = project_dir_option
     check_directory(project_dir)
 
+    if conductor:
+        agent = "claude"
+
     if agent:
         import asyncio
 
         agent_data = asyncio.run(get_agent_data(agent))
     else:
         agent_data = None
+
+    if conductor and agent_data is None:
+        print("error: Claude Code agent not found.")
+        print("Install Claude Code:")
+        print("  curl -fsSL https://claude.ai/install.sh | bash")
+        print("Install ACP adapter:")
+        print("  npm install -g @zed-industries/claude-code-acp")
+        sys.exit(1)
 
     app = ToadApp(
         mode=None if agent_data else "store",

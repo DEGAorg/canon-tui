@@ -164,7 +164,10 @@ class MainScreen(Screen, can_focus=False):
                     project_path=MainScreen.project_path,
                     column=MainScreen.column,
                 )
-            yield ProjectStatePane(id="project_state_pane")
+            yield ProjectStatePane(
+                project_path=self.project_path,
+                id="project_state_pane",
+            )
         yield Footer()
 
     def run_prompt(self, prompt: str) -> None:

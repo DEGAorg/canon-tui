@@ -228,6 +228,7 @@ class GanttTimeline(Static):
 
     DEFAULT_CSS = """
     GanttTimeline {
+        height: auto;
         padding: 0 1;
     }
     """
@@ -249,9 +250,13 @@ class GanttTimeline(Static):
             self._initial_data = None
 
     def on_mount(self) -> None:
-        """Set data after mount so size is available."""
+        """Defer initial render until layout is ready."""
         if self._initial_data is not None:
-            self.timeline_data = self._initial_data
+            self.set_timer(0.1, self._deferred_load)
+
+    def _deferred_load(self) -> None:
+        """Load data after layout has settled."""
+        self.timeline_data = self._initial_data
 
     @staticmethod
     def _load_file(path: Path) -> dict[str, Any] | None:
@@ -276,7 +281,8 @@ class GanttTimeline(Static):
         if not self.timeline_data:
             self.update("No timeline data")
             return
-        track_width = max(40, self.size.width - LABEL_WIDTH - 4)
+        width = self.size.width if self.size.width > 0 else 80
+        track_width = max(40, width - LABEL_WIDTH - 4)
         lines = render_gantt(self.timeline_data, track_width)
         self.update(Text("\n").join(lines))
 

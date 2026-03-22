@@ -109,6 +109,7 @@ class Agent(AgentBase):
         self._message_target: MessagePump | None = None
 
         self._terminal_count: int = 0
+        self._context_injected: bool = False
 
         log_filename: str = generate_datetime_filename(f"{agent['name']}", ".txt")
         if log_path := os.environ.get("TOAD_LOG"):
@@ -648,7 +649,28 @@ class Agent(AgentBase):
         prompt_content_blocks = await asyncio.to_thread(
             build_prompt, self.project_root_path, prompt
         )
+        if not self._context_injected:
+            self._context_injected = True
+            context = self._load_agent_context()
+            if context:
+                prompt_content_blocks.insert(
+                    0, {"type": "text", "text": context}
+                )
         return await self.acp_session_prompt(prompt_content_blocks)
+
+    @staticmethod
+    def _load_agent_context() -> str:
+        """Load Toad agent context instructions."""
+        from importlib.resources import files
+
+        try:
+            return (
+                files("toad.data")
+                .joinpath("agent_context.md")
+                .read_text("utf-8")
+            )
+        except Exception:
+            return ""
 
     async def acp_initialize(self):
         """Initialize agent."""

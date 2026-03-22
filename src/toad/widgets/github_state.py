@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from textual.app import ComposeResult
@@ -11,6 +12,7 @@ from textual.containers import VerticalScroll
 from textual.widget import Widget
 from textual.widgets import Collapsible, Static
 
+from toad.widgets.gantt_timeline import GanttTimeline
 from toad.widgets.github_views.fetch import (
     RepoInfo,
     check_auth,
@@ -72,6 +74,7 @@ class GitHubStateWidget(Widget, can_focus=True):
     def compose(self) -> ComposeResult:
         with VerticalScroll():
             yield StatusOverview(id="gh-status-overview")
+            yield GanttTimeline(id="gh-gantt")
             yield Static("Plans", classes="section-title")
             yield PlansView(id="gh-plans")
             yield Static("Pull Requests", classes="section-title")
@@ -109,6 +112,13 @@ class GitHubStateWidget(Widget, can_focus=True):
         timeline = self.query_one("#gh-timeline", TimelineView)
         plans = self.query_one("#gh-plans", PlansView)
         prs = self.query_one("#gh-prs", PRsView)
+        gantt = self.query_one("#gh-gantt", GanttTimeline)
+
+        # Load Gantt from timeline.json in project dir
+        project_dir = Path(self._project_path or ".")
+        timeline_file = project_dir / "timeline.json"
+        if timeline_file.exists():
+            gantt.reload_from_file(timeline_file)
 
         await overview.load(self._repo)
         await plans.load(self._repo)

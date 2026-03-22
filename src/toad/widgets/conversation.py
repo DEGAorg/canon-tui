@@ -948,7 +948,7 @@ class Conversation(containers.Vertical):
             panel_id = match.group(1)
             if panel_id == "list":
                 self.flash(
-                    "Available panels: github", style="default"
+                    "Available panels: github, project_state", style="default"
                 )
             elif match.group(2) == "close":
                 self.post_message(
@@ -1987,7 +1987,7 @@ class Conversation(containers.Vertical):
         elif command == "panel":
             parts = parameters.strip().split()
             if not parts or parts[0] == "list":
-                self.flash("Available panels: github", style="default")
+                self.flash("Available panels: github, project_state", style="default")
                 return True
             panel_id = parts[0]
             action = parts[1] if len(parts) > 1 else "open"

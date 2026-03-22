@@ -27,6 +27,7 @@ from toad.widgets.conversation import Conversation
 from toad.widgets.project_directory_tree import ProjectDirectoryTree
 from toad.widgets.side_bar import SideBar, SideBarCollapsible
 from toad.widgets.github_state import GitHubStateWidget
+from toad.widgets.project_state_pane import ProjectStatePane
 
 
 class ModeProvider(Provider):
@@ -74,7 +75,7 @@ class MainScreen(Screen, can_focus=False):
     SESSION_NAVIGATION_GROUP = Binding.Group(description="Sessions")
     BINDINGS = [
         Binding("ctrl+b,f20", "show_sidebar", "Sidebar"),
-        Binding("ctrl+g", "toggle_github", "Project Status"),
+        Binding("ctrl+g", "toggle_project_state", "Project Status"),
         Binding("ctrl+h", "go_home", "Home"),
         Binding(
             "ctrl+left_square_bracket",
@@ -100,6 +101,7 @@ class MainScreen(Screen, can_focus=False):
     column = reactive(False)
     column_width = reactive(100)
     scrollbar = reactive("")
+    split_enabled: reactive[bool] = reactive(False)
     project_path: var[Path] = var(Path("./").expanduser().absolute())
 
     app = getters.app(ToadApp)
@@ -139,28 +141,30 @@ class MainScreen(Screen, can_focus=False):
         self.conversation
 
     def compose(self) -> ComposeResult:
-        with containers.Center():
-            yield SideBar(
-                SideBar.Panel("Plan", Plan([])),
-                SideBar.Panel(
-                    "Project",
-                    ProjectDirectoryTree(
-                        self.project_path,
-                        id="project_directory_tree",
+        with containers.Horizontal(id="main-split"):
+            with containers.Center():
+                yield SideBar(
+                    SideBar.Panel("Plan", Plan([])),
+                    SideBar.Panel(
+                        "Project",
+                        ProjectDirectoryTree(
+                            self.project_path,
+                            id="project_directory_tree",
+                        ),
+                        flex=True,
                     ),
-                    flex=True,
-                ),
-            )
-            yield Conversation(
-                self.project_path,
-                self._agent,
-                self._agent_session_id,
-                self._session_pk,
-                initial_prompt=self._initial_prompt,
-            ).data_bind(
-                project_path=MainScreen.project_path,
-                column=MainScreen.column,
-            )
+                )
+                yield Conversation(
+                    self.project_path,
+                    self._agent,
+                    self._agent_session_id,
+                    self._session_pk,
+                    initial_prompt=self._initial_prompt,
+                ).data_bind(
+                    project_path=MainScreen.project_path,
+                    column=MainScreen.column,
+                )
+            yield ProjectStatePane(id="project_state_pane")
         yield Footer()
 
     def run_prompt(self, prompt: str) -> None:
@@ -262,37 +266,34 @@ class MainScreen(Screen, can_focus=False):
     def action_show_sidebar(self) -> None:
         self.side_bar.query_one("Collapsible CollapsibleTitle").focus()
 
-    def action_toggle_github(self) -> None:
-        """Toggle the GitHub panel open/closed and focus it.
+    def action_toggle_project_state(self) -> None:
+        """Toggle the right-side project state pane."""
+        self.split_enabled = not self.split_enabled
 
-        On first toggle, dynamically mounts the panel into the sidebar
-        with the current project_path so it resolves the correct repo.
-        """
-        collapsibles = self.side_bar.query(SideBarCollapsible)
-        for collapsible in collapsibles:
-            if collapsible.title == "Project Status":
-                if collapsible.collapsed:
-                    self._open_github_panel()
-                else:
-                    self._close_github_panel()
-                return
-        self._open_github_panel()
+    def watch_split_enabled(self, enabled: bool) -> None:
+        """Show/hide the project state pane."""
+        pane = self.query_one("#project_state_pane", ProjectStatePane)
+        pane.display = enabled
 
     @on(acp_messages.OpenPanel)
     def on_acp_open_panel(self, message: acp_messages.OpenPanel) -> None:
-        """Agent requests opening a sidebar panel."""
+        """Agent requests opening a panel."""
         message.stop()
         panel_id = message.panel_id
         if panel_id == "github":
             self._open_github_panel(message.context)
+        elif panel_id == "project_state":
+            self.split_enabled = True
 
     @on(acp_messages.ClosePanel)
     def on_acp_close_panel(self, message: acp_messages.ClosePanel) -> None:
-        """Agent requests closing a sidebar panel."""
+        """Agent requests closing a panel."""
         message.stop()
         panel_id = message.panel_id
         if panel_id == "github":
             self._close_github_panel()
+        elif panel_id == "project_state":
+            self.split_enabled = False
 
     def _open_github_panel(
         self, context: dict[str, object] | None = None

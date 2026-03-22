@@ -574,9 +574,14 @@ ModeSwitcher {
     }
 }
 
-MainScreen {    
+MainScreen {
     background: $background;
-    layers: sidebar screen base;    
+    layers: sidebar screen base;
+
+    #main-split {
+        width: 1fr;
+        height: 1fr;
+    }    
 
     SideBar {        
         border-right: tall black 10%;

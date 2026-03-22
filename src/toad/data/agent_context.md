@@ -1,37 +1,26 @@
 # Toad TUI — Agent Capabilities
 
-You are running inside Toad, a terminal UI for AI agents. You can control
-Toad's panels by outputting `/panel` commands as plain text in your response.
-Toad scans your output and intercepts these lines automatically.
+You are running inside Toad, a terminal UI for AI agents. A Unix socket
+controller is available at `/tmp/toad-*.sock` for controlling the TUI.
 
-## Panel commands
+## Socket commands
 
-Output these lines on their own line in your response:
+Run these via your terminal tool to control the TUI:
 
-```
-/panel project_state
-```
-Opens the Project State split-screen right pane.
+```bash
+# Open the Project State right pane
+tools/toad-ctl.sh action "screen.toggle_project_state"
 
-```
-/panel project_state close
-```
-Closes the Project State pane.
+# Close it (same toggle)
+tools/toad-ctl.sh action "screen.toggle_project_state"
 
+# Or with socat directly
+echo '{"cmd":"action","name":"screen.toggle_project_state"}' | socat - UNIX-CONNECT:/tmp/toad-*.sock
 ```
-/panel github
-```
-Opens the GitHub sidebar panel (issues, PRs, plans).
-
-```
-/panel github close
-```
-Closes the GitHub sidebar panel.
 
 ## When to use
 
-- When the user asks to see project state, status, overview, or dashboard → `/panel project_state`
-- When the user asks about GitHub issues, PRs, or plans → `/panel github`
-- When the user asks to close or hide a panel → `/panel <id> close`
+- User asks to see project state, status, overview, or dashboard → toggle project_state pane
+- User asks to close or hide the panel → toggle it again
 
-Output the command as a line of text in your response — it is NOT a tool call.
+Use your terminal tool to run `toad-ctl.sh`. Do NOT output `/panel` text.

@@ -9,7 +9,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.widget import Widget
-from textual.widgets import Collapsible, Static, TabbedContent, TabPane
+from textual.widgets import Collapsible, Static
 
 from toad.widgets.github_views.fetch import (
     RepoInfo,
@@ -52,10 +52,10 @@ class GitHubStateWidget(Widget, can_focus=True):
     GitHubStateWidget Collapsible {
         padding: 0 1;
     }
-    GitHubStateWidget TabbedContent {
-        height: auto;
-        min-height: 10;
-        max-height: 30;
+    GitHubStateWidget .section-title {
+        color: $text-warning;
+        text-style: bold;
+        padding: 1 1 0 1;
     }
     """
 
@@ -72,16 +72,12 @@ class GitHubStateWidget(Widget, can_focus=True):
     def compose(self) -> ComposeResult:
         with VerticalScroll():
             yield StatusOverview(id="gh-status-overview")
-            yield TimelineView(id="gh-timeline")
-            with Collapsible(title="Detail Tables", collapsed=True):
-                with TabbedContent("Issues", "Plans", "PRs"):
-                    yield TabPane(
-                        "Issues", IssuesView(id="gh-issues")
-                    )
-                    yield TabPane(
-                        "Plans", PlansView(id="gh-plans")
-                    )
-                    yield TabPane("PRs", PRsView(id="gh-prs"))
+            yield Static("Plans", classes="section-title")
+            yield PlansView(id="gh-plans")
+            yield Static("Pull Requests", classes="section-title")
+            yield PRsView(id="gh-prs")
+            with Collapsible(title="Timeline", collapsed=True):
+                yield TimelineView(id="gh-timeline")
 
     async def on_mount(self) -> None:
         """Detect repo and load initial data."""
@@ -113,15 +109,11 @@ class GitHubStateWidget(Widget, can_focus=True):
         timeline = self.query_one("#gh-timeline", TimelineView)
         plans = self.query_one("#gh-plans", PlansView)
         prs = self.query_one("#gh-prs", PRsView)
-        issues = self.query_one("#gh-issues", IssuesView)
 
         await overview.load(self._repo)
-        await timeline.load(self._repo)
         await plans.load(self._repo)
         await prs.load(self._repo)
-
-        issues._repo = self._repo
-        await issues.fetch_and_render()
+        await timeline.load(self._repo)
 
     async def refresh_data(self) -> None:
         """Re-fetch data for all views."""

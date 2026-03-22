@@ -240,23 +240,32 @@ async def fetch_events(
 async def fetch_plan_issues(
     repo: RepoInfo,
     *,
-    limit: int = 20,
+    limit: int = 50,
 ) -> list[dict[str, Any]]:
-    """Fetch issues with plan:* labels, including body for progress parsing."""
-    raw = await _run_gh(
-        "issue",
-        "list",
-        "--repo",
-        repo.nwo,
-        "--label",
-        "plan:active",
-        "--json",
-        f"{ISSUE_FIELDS},body",
-        "--limit",
-        str(limit),
-    )
-    result: list[dict[str, Any]] = json.loads(raw)
-    return result
+    """Fetch issues with any plan:* label, including body for progress parsing."""
+    all_issues: list[dict[str, Any]] = []
+    for label in PLAN_LABELS:
+        raw = await _run_gh(
+            "issue",
+            "list",
+            "--repo",
+            repo.nwo,
+            "--label",
+            label,
+            "--state",
+            "all",
+            "--json",
+            f"{ISSUE_FIELDS},body",
+            "--limit",
+            str(limit),
+        )
+        issues: list[dict[str, Any]] = json.loads(raw)
+        seen = {i.get("number") for i in all_issues}
+        for issue in issues:
+            if issue.get("number") not in seen:
+                all_issues.append(issue)
+    all_issues.sort(key=lambda i: i.get("number", 0), reverse=True)
+    return all_issues
 
 
 PLAN_LABELS: list[str] = [

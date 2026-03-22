@@ -74,7 +74,7 @@ class MainScreen(Screen, can_focus=False):
     SESSION_NAVIGATION_GROUP = Binding.Group(description="Sessions")
     BINDINGS = [
         Binding("ctrl+b,f20", "show_sidebar", "Sidebar"),
-        Binding("ctrl+g", "toggle_github", "GitHub"),
+        Binding("ctrl+g", "toggle_github", "Project Status"),
         Binding("ctrl+h", "go_home", "Home"),
         Binding(
             "ctrl+left_square_bracket",
@@ -270,7 +270,7 @@ class MainScreen(Screen, can_focus=False):
         """
         collapsibles = self.side_bar.query(SideBarCollapsible)
         for collapsible in collapsibles:
-            if collapsible.title == "GitHub":
+            if collapsible.title == "Project Status":
                 if collapsible.collapsed:
                     self._open_github_panel()
                 else:
@@ -308,7 +308,7 @@ class MainScreen(Screen, can_focus=False):
 
         collapsibles = self.side_bar.query(SideBarCollapsible)
         for collapsible in collapsibles:
-            if collapsible.title == "GitHub":
+            if collapsible.title == "Project Status":
                 collapsible.collapsed = False
                 github_widget = self.query_one(
                     "#github_state", GitHubStateWidget
@@ -321,7 +321,7 @@ class MainScreen(Screen, can_focus=False):
                 project_path=project_path,
                 id="github_state",
             ),
-            title="GitHub",
+            title="Project Status",
             collapsed=False,
             classes="-fixed",
         )
@@ -331,7 +331,7 @@ class MainScreen(Screen, can_focus=False):
         """Collapse the GitHub panel if it exists."""
         collapsibles = self.side_bar.query(SideBarCollapsible)
         for collapsible in collapsibles:
-            if collapsible.title == "GitHub":
+            if collapsible.title == "Project Status":
                 collapsible.collapsed = True
                 return
 

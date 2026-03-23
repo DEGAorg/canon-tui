@@ -16,10 +16,32 @@ from toad.widgets.gantt_timeline import GanttTimeline
 
 log = logging.getLogger(__name__)
 
-TIMELINE_RAW_URL = (
+DEFAULT_TIMELINE_URL = (
     "https://raw.githubusercontent.com/DEGAorg"
     "/claude-code-config/develop/data/timeline.json"
 )
+
+
+def _read_timeline_url(project_path: Path) -> str:
+    """Read timeline URL from dega-core.yaml, fallback to default."""
+    config_path = project_path / "dega-core.yaml"
+    if config_path.exists():
+        try:
+            import yaml
+
+            config = yaml.safe_load(config_path.read_text("utf-8"))
+            tl = config.get("timeline", {})
+            repo = tl.get("repo")
+            branch = tl.get("branch")
+            path = tl.get("path")
+            if repo and branch and path:
+                return (
+                    f"https://raw.githubusercontent.com/{repo}"
+                    f"/{branch}/{path}"
+                )
+        except Exception as exc:
+            log.warning("Failed to read dega-core.yaml: %s", exc)
+    return DEFAULT_TIMELINE_URL
 
 
 class ProjectStatePane(VerticalScroll):
@@ -40,6 +62,7 @@ class ProjectStatePane(VerticalScroll):
         super().__init__(**kwargs)
         self._project_path = project_path or Path(".").resolve()
         self._refresh_timer: Timer | None = None
+        self._timeline_url = _read_timeline_url(self._project_path)
 
     def compose(self) -> ComposeResult:
         yield Static("Project State", id="project-state-title")
@@ -62,8 +85,8 @@ class ProjectStatePane(VerticalScroll):
 
     @work(thread=True, exit_on_error=False)
     def _fetch_timeline(self) -> None:
-        """Fetch timeline from gist, fallback to local file."""
-        data = self._fetch_from_gist()
+        """Fetch timeline from remote URL, fallback to local file."""
+        data = self._fetch_remote()
         if data is None:
             data = self._load_local()
         if data is not None:
@@ -73,16 +96,18 @@ class ProjectStatePane(VerticalScroll):
         gantt = self.query_one("#pane-gantt", GanttTimeline)
         gantt.timeline_data = data
 
-    @staticmethod
-    def _fetch_from_gist() -> dict | None:
+    def _fetch_remote(self) -> dict | None:
         try:
             import httpx
 
-            resp = httpx.get(TIMELINE_RAW_URL, timeout=5, follow_redirects=True)
+            resp = httpx.get(
+                self._timeline_url, timeout=5, follow_redirects=True
+            )
             resp.raise_for_status()
             return resp.json()
         except Exception as exc:
-            log.warning("Failed to fetch timeline from gist: %s", exc)
+            log.warning("Failed to fetch timeline from %s: %s",
+                        self._timeline_url, exc)
             return None
 
     def _load_local(self) -> dict | None:

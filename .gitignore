@@ -21,3 +21,9 @@ uv.lock
 agent.jsonl
 replay.jsonl
 sandbox/
+
+# DEGA Core — orchestrator runtime state (ephemeral, not tracked)
+/.orchestrator/
+
+# DEGA Core — personal focus config for planner loop
+focus.yaml

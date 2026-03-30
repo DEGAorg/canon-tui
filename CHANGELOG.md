@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### Changed
+- Canon Builder + Automation sections for Toad TUI (`canon-sections`) — 2026-03-30
+
 - Demo TUI Layout — Orchestrator-Aware Split Screen (`demo-tui-layout`) — 2026-03-30
 
 ## [0.6.12] - 2026-03-13

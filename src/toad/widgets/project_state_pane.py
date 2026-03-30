@@ -15,6 +15,7 @@ from textual.widgets import Static, TabbedContent, TabPane
 
 from toad.widgets.gantt_timeline import GanttTimeline
 from toad.widgets.github_state import GitHubStateWidget
+from toad.widgets.worker_list_view import WorkerListView
 
 log = logging.getLogger(__name__)
 
@@ -124,11 +125,7 @@ class ProjectStatePane(Vertical):
                     id="plans-empty",
                 )
             with TabPane("Workers", id="tab-workers"):
-                yield Static(
-                    "No orchestrator data",
-                    classes="empty-state",
-                    id="workers-empty",
-                )
+                yield WorkerListView(id="worker-list-view")
 
     def on_mount(self) -> None:
         self._fetch_timeline()

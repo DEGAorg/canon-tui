@@ -27,7 +27,6 @@ from toad.widgets.conversation import Conversation
 from toad.widgets.project_directory_tree import ProjectDirectoryTree
 from toad.widgets.side_bar import SideBar
 from toad.widgets.project_state_pane import ProjectStatePane
-from toad.widgets.orchestrator_state import OrchestratorStateWidget
 
 
 class ModeProvider(Provider):
@@ -270,59 +269,113 @@ class MainScreen(Screen, can_focus=False):
         self.side_bar.query_one("Collapsible CollapsibleTitle").focus()
 
     def action_toggle_project_state(self) -> None:
-        """Toggle the right-side project state pane."""
-        self.split_enabled = not self.split_enabled
+        """Toggle the right-side project state pane.
+
+        If opening, shows the GitHub section by default.
+        If closing, hides all sections.
+        """
+        if self.split_enabled:
+            pane = self.query_one("#project_state_pane", ProjectStatePane)
+            pane.hide_all_sections()
+        else:
+            self.split_enabled = True
+            pane = self.query_one("#project_state_pane", ProjectStatePane)
+            pane.show_section("section-github")
 
     def action_refresh_timeline(self) -> None:
         """Re-fetch timeline data from gist."""
         pane = self.query_one("#project_state_pane", ProjectStatePane)
         pane.refresh_timeline()
 
+    def _show_section_tab(
+        self, section_id: str, tab_id: str
+    ) -> None:
+        """Open pane, show a section, and activate a tab."""
+        self.split_enabled = True
+        pane = self.query_one("#project_state_pane", ProjectStatePane)
+        pane.show_section(section_id)
+        pane.activate_tab(tab_id)
+
+    def action_show_github(self) -> None:
+        """Open pane and show GitHub tab."""
+        self._show_section_tab("section-github", "tab-github")
+
+    def action_show_timeline(self) -> None:
+        """Open pane and show Timeline tab."""
+        self._show_section_tab("section-github", "tab-timeline")
+
+    def action_show_plans(self) -> None:
+        """Open pane and show Plans tab."""
+        self._show_section_tab("section-orchestrator", "tab-plans")
+
+    def action_show_workers(self) -> None:
+        """Open pane and show Workers tab."""
+        self._show_section_tab("section-orchestrator", "tab-workers")
+
+    def action_show_automations(self) -> None:
+        """Open pane and show Automations tab."""
+        self._show_section_tab("section-automations", "tab-runs")
+
     def watch_split_enabled(self, enabled: bool) -> None:
-        """Show/hide the project state pane, refresh on open."""
+        """Show/hide the project state pane."""
         pane = self.query_one("#project_state_pane", ProjectStatePane)
         pane.display = enabled
-        if enabled:
-            pane.refresh_timeline()
+
+    @on(ProjectStatePane.AllSectionsHidden)
+    def on_all_sections_hidden(
+        self, message: ProjectStatePane.AllSectionsHidden
+    ) -> None:
+        """Auto-close pane when both sections are toggled off."""
+        message.stop()
+        self.split_enabled = False
+
+    # Map ACP panel IDs to (section_id, tab_id)
+    _PANEL_MAP: dict[str, tuple[str, str]] = {
+        "github": ("section-github", "tab-github"),
+        "timeline": ("section-github", "tab-timeline"),
+        "orchestrator": ("section-orchestrator", "tab-plans"),
+        "workers": ("section-orchestrator", "tab-workers"),
+        "automations": ("section-automations", "tab-runs"),
+    }
+
+    # Map ACP panel IDs to section_id for close
+    _PANEL_SECTION_MAP: dict[str, str] = {
+        "github": "section-github",
+        "timeline": "section-github",
+        "orchestrator": "section-orchestrator",
+        "workers": "section-orchestrator",
+        "automations": "section-automations",
+    }
 
     @on(acp_messages.OpenPanel)
     def on_acp_open_panel(self, message: acp_messages.OpenPanel) -> None:
         """Agent requests opening a panel."""
         message.stop()
-        pane = self.query_one(
-            "#project_state_pane", ProjectStatePane
-        )
         panel_id = message.panel_id
-        if panel_id == "github":
+        if panel_id == "project_state":
             self.split_enabled = True
-            pane.activate_tab("tab-github")
-        elif panel_id == "orchestrator":
-            self.split_enabled = True
-            pane.show_orchestrator_section()
-            pane.activate_tab("tab-plans")
-        elif panel_id == "project_state":
-            self.split_enabled = True
+            return
+        mapping = self._PANEL_MAP.get(panel_id)
+        if mapping:
+            self._show_section_tab(*mapping)
 
     @on(acp_messages.ClosePanel)
     def on_acp_close_panel(self, message: acp_messages.ClosePanel) -> None:
         """Agent requests closing a panel."""
         message.stop()
         panel_id = message.panel_id
-        if panel_id in ("github", "orchestrator", "project_state"):
-            self.split_enabled = False
-
-    @on(OrchestratorStateWidget.OrchestratorDetected)
-    def on_orchestrator_detected(
-        self, message: OrchestratorStateWidget.OrchestratorDetected
-    ) -> None:
-        """Auto-open pane and switch to Plans tab on first detection."""
-        message.stop()
-        self.split_enabled = True
-        pane = self.query_one(
-            "#project_state_pane", ProjectStatePane
-        )
-        pane.show_orchestrator_section()
-        pane.activate_tab("tab-plans")
+        if panel_id == "project_state":
+            pane = self.query_one(
+                "#project_state_pane", ProjectStatePane
+            )
+            pane.hide_all_sections()
+            return
+        section_id = self._PANEL_SECTION_MAP.get(panel_id)
+        if section_id:
+            pane = self.query_one(
+                "#project_state_pane", ProjectStatePane
+            )
+            pane.hide_section(section_id)
 
     def action_focus_prompt(self) -> None:
         self.conversation.focus_prompt()

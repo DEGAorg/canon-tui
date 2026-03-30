@@ -140,10 +140,10 @@ class PlanListView(Widget, can_focus=True):
         """Handle upstream plan data updates."""
         self.plans = event.plans
 
-    def watch_plans(self, plans: list[PlanSummary]) -> None:
+    async def watch_plans(self, plans: list[PlanSummary]) -> None:
         """Re-render plan rows when data changes."""
         container = self.query_one(VerticalScroll)
-        container.remove_children()
+        await container.remove_children()
 
         if not plans:
             container.mount(

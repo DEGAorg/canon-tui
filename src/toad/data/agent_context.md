@@ -8,20 +8,40 @@ controller is available at `/tmp/toad-*.sock` for controlling the TUI.
 Run these via your terminal tool to control the TUI:
 
 ```bash
-# Open the Project State right pane
+# Show GitHub PRs / issues dashboard
+tools/toad-ctl.sh action "screen.show_github"
+
+# Show project timeline (Gantt chart)
+tools/toad-ctl.sh action "screen.show_timeline"
+
+# Show orchestrator plans
+tools/toad-ctl.sh action "screen.show_plans"
+
+# Show orchestrator workers for the selected plan
+tools/toad-ctl.sh action "screen.show_workers"
+
+# Show automation runs
+tools/toad-ctl.sh action "screen.show_automations"
+
+# Toggle the entire right pane open/closed
 tools/toad-ctl.sh action "screen.toggle_project_state"
 
-# Close it (same toggle)
-tools/toad-ctl.sh action "screen.toggle_project_state"
-
-# Refresh timeline data (re-fetch from gist after updates)
+# Refresh timeline data (re-fetch after updates)
 tools/toad-ctl.sh action "screen.refresh_timeline"
 ```
 
 ## When to use
 
-- User asks to see project state, status, overview, or dashboard → toggle project_state pane
-- User asks to close or hide the panel → toggle it again
-- After updating the timeline gist → refresh_timeline so the pane shows new data
+- User asks about PRs, issues, or GitHub status → show_github
+- User asks about project timeline, milestones, or schedule → show_timeline
+- User asks about orchestrator plans or plan progress → show_plans
+- User asks about workers, items, or task status → show_workers
+- User asks about automation runs or canon executions → show_automations
+- User asks to see project state, status, or dashboard → toggle_project_state
+- User asks to close or hide the panel → toggle_project_state
+- After updating the timeline → refresh_timeline
+
+Each command opens only its section. Multiple sections can be visible
+at once (they share height evenly). Hiding all sections auto-closes the pane.
 
 Use your terminal tool to run `toad-ctl.sh`. Do NOT output `/panel` text.

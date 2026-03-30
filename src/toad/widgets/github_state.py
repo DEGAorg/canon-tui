@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Any
 
 from textual.app import ComposeResult
@@ -12,7 +11,6 @@ from textual.containers import VerticalScroll
 from textual.widget import Widget
 from textual.widgets import Collapsible, Static
 
-from toad.widgets.gantt_timeline import GanttTimeline
 from toad.widgets.github_views.fetch import (
     RepoInfo,
     check_auth,
@@ -71,18 +69,9 @@ class GitHubStateWidget(Widget, can_focus=True):
         self._repo = repo
         self._project_path = project_path
 
-    def _gantt_path(self) -> Path | None:
-        """Resolve timeline.json from the project directory."""
-        project_dir = Path(self._project_path or ".")
-        path = project_dir / "timeline.json"
-        return path if path.exists() else None
-
     def compose(self) -> ComposeResult:
-        gantt_path = self._gantt_path()
         with VerticalScroll():
             yield StatusOverview(id="gh-status-overview")
-            if gantt_path:
-                yield GanttTimeline(data_path=gantt_path, id="gh-gantt")
             yield Static("Plans", classes="section-title")
             yield PlansView(id="gh-plans")
             yield Static("Pull Requests", classes="section-title")
@@ -120,15 +109,6 @@ class GitHubStateWidget(Widget, can_focus=True):
         timeline = self.query_one("#gh-timeline", TimelineView)
         plans = self.query_one("#gh-plans", PlansView)
         prs = self.query_one("#gh-prs", PRsView)
-
-        # Reload Gantt on refresh if present
-        try:
-            gantt = self.query_one("#gh-gantt", GanttTimeline)
-            gantt_path = self._gantt_path()
-            if gantt_path:
-                gantt.reload_from_file(gantt_path)
-        except Exception:
-            pass
 
         await overview.load(self._repo)
         await plans.load(self._repo)

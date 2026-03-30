@@ -1,17 +1,18 @@
-"""Right-side pane for project state (timeline, GitHub, orchestrator)."""
+"""Right-side pane for project state — dynamic N-section layout."""
 
 from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 
-from textual import work
+from textual import on, work
 from textual.app import ComposeResult
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.message import Message
 from textual.timer import Timer
-from textual.widgets import TabbedContent, TabPane
+from textual.widgets import Button, Static, TabbedContent, TabPane
 
 from toad.widgets.gantt_timeline import GanttTimeline
 from toad.widgets.github_state import GitHubStateWidget
@@ -49,17 +50,39 @@ def _read_timeline_url(project_path: Path) -> str:
     return DEFAULT_TIMELINE_URL
 
 
-class ProjectStatePane(Vertical):
-    """Toggleable right pane with tabbed project state sections.
+# Section IDs — used as TabbedContent widget IDs and toolbar button suffix
+SECTION_GITHUB = "section-github"
+SECTION_ORCHESTRATOR = "section-orchestrator"
+SECTION_AUTOMATIONS = "section-automations"
 
-    Top section (always visible): Timeline + GitHub tabs.
-    Bottom section (hidden by default): Plans + Workers tabs.
-    Both sections use ``height: 1fr`` so a single visible section
-    fills the pane and two visible sections split 50/50.
+
+@dataclass
+class _SectionDef:
+    """Definition of a pane section."""
+
+    section_id: str
+    button_label: str
+
+
+# Ordered list of sections — add new ones here
+SECTIONS: list[_SectionDef] = [
+    _SectionDef(SECTION_GITHUB, "GitHub"),
+    _SectionDef(SECTION_ORCHESTRATOR, "Plans"),
+    _SectionDef(SECTION_AUTOMATIONS, "Automations"),
+]
+
+
+class ProjectStatePane(Vertical):
+    """Toggleable right pane with N dynamic sections.
+
+    Each section is a ``TabbedContent`` with ``height: 1fr``.
+    All sections start hidden. Visible sections share height
+    evenly (1 = 100%, 2 = 50/50, 3 = 33/33/33). When all
+    sections are hidden the pane auto-closes.
     """
 
-    class OrchestratorSectionShown(Message):
-        """Posted when the orchestrator (bottom) section becomes visible."""
+    class AllSectionsHidden(Message):
+        """Posted when every section is hidden — pane should close."""
 
     DEFAULT_CSS = """
     ProjectStatePane {
@@ -68,17 +91,29 @@ class ProjectStatePane(Vertical):
         border-left: tall $primary 30%;
     }
 
-    ProjectStatePane #top-section {
-        height: 1fr;
+    ProjectStatePane #pane-toolbar {
+        height: auto;
+        dock: top;
+        padding: 0 1;
     }
 
-    ProjectStatePane #bottom-section {
-        height: 1fr;
-        display: none;
+    ProjectStatePane #pane-toolbar Button {
+        min-width: 10;
+        height: 1;
+        margin: 0 1 0 0;
+        border: none;
+        background: $surface;
+        color: $text-muted;
     }
 
-    ProjectStatePane #bottom-section.visible {
-        display: block;
+    ProjectStatePane #pane-toolbar Button.active {
+        background: $primary 30%;
+        color: $text;
+        text-style: bold;
+    }
+
+    ProjectStatePane .pane-section {
+        height: 1fr;
     }
 
     ProjectStatePane #pane-gantt {
@@ -110,27 +145,57 @@ class ProjectStatePane(Vertical):
         self._timeline_url = _read_timeline_url(self._project_path)
 
     def compose(self) -> ComposeResult:
-        with TabbedContent(id="top-section"):
-            with TabPane("Timeline", id="tab-timeline"):
-                yield GanttTimeline(id="pane-gantt")
+        # Toolbar with one button per section
+        with Horizontal(id="pane-toolbar"):
+            for sec in SECTIONS:
+                yield Button(
+                    sec.button_label,
+                    id=f"btn-{sec.section_id}",
+                )
+
+        # --- GitHub / Timeline section ---
+        with TabbedContent(
+            id=SECTION_GITHUB, classes="pane-section"
+        ):
             with TabPane("GitHub", id="tab-github"):
                 yield GitHubStateWidget(
                     project_path=str(self._project_path),
                     id="github_state",
                 )
+            with TabPane("Timeline", id="tab-timeline"):
+                yield GanttTimeline(id="pane-gantt")
 
+        # Orchestrator state watcher (invisible, drives data)
         yield OrchestratorStateWidget(
             project_path=self._project_path,
             id="orchestrator-state",
         )
 
-        with TabbedContent(id="bottom-section"):
+        # --- Plans / Workers section ---
+        with TabbedContent(
+            id=SECTION_ORCHESTRATOR, classes="pane-section"
+        ):
             with TabPane("Plans", id="tab-plans"):
                 yield PlanListView(id="plan-list-view")
             with TabPane("Workers", id="tab-workers"):
                 yield WorkerListView(id="worker-list-view")
 
+        # --- Automations section ---
+        with TabbedContent(
+            id=SECTION_AUTOMATIONS, classes="pane-section"
+        ):
+            with TabPane("Runs", id="tab-runs"):
+                yield Static(
+                    "No automation runs",
+                    classes="empty-state",
+                    id="automations-empty",
+                )
+
     def on_mount(self) -> None:
+        # All sections hidden by default
+        for sec in SECTIONS:
+            self.query_one(f"#{sec.section_id}").display = False
+        self._sync_toolbar()
         self._fetch_timeline()
 
     def watch_display(self, visible: bool) -> None:
@@ -146,31 +211,76 @@ class ProjectStatePane(Vertical):
                 self._refresh_timer = None
 
     # ------------------------------------------------------------------
-    # Public API
+    # Toolbar — generic button handler
+    # ------------------------------------------------------------------
+
+    @on(Button.Pressed)
+    def _on_toolbar_button(self, event: Button.Pressed) -> None:
+        btn_id = event.button.id or ""
+        if not btn_id.startswith("btn-section-"):
+            return
+        event.stop()
+        section_id = btn_id.removeprefix("btn-")
+        self.toggle_section(section_id)
+
+    def _sync_toolbar(self) -> None:
+        """Sync all toolbar buttons and fire AllSectionsHidden if needed."""
+        any_visible = False
+        for sec in SECTIONS:
+            widget = self.query_one(f"#{sec.section_id}")
+            btn = self.query_one(f"#btn-{sec.section_id}", Button)
+            if widget.display:
+                btn.add_class("active")
+                any_visible = True
+            else:
+                btn.remove_class("active")
+        if not any_visible:
+            self.post_message(self.AllSectionsHidden())
+
+    # ------------------------------------------------------------------
+    # Public API — section visibility
+    # ------------------------------------------------------------------
+
+    def show_section(self, section_id: str) -> None:
+        """Show a section by its ID."""
+        self.query_one(f"#{section_id}").display = True
+        self._sync_toolbar()
+
+    def hide_section(self, section_id: str) -> None:
+        """Hide a section by its ID."""
+        self.query_one(f"#{section_id}").display = False
+        self._sync_toolbar()
+
+    def toggle_section(self, section_id: str) -> None:
+        """Toggle a section's visibility."""
+        widget = self.query_one(f"#{section_id}")
+        widget.display = not widget.display
+        self._sync_toolbar()
+
+    def hide_all_sections(self) -> None:
+        """Hide every section."""
+        for sec in SECTIONS:
+            self.query_one(f"#{sec.section_id}").display = False
+        self._sync_toolbar()
+
+    # ------------------------------------------------------------------
+    # Public API — tab activation
     # ------------------------------------------------------------------
 
     def activate_tab(self, tab_id: str) -> None:
-        """Switch to a specific tab by its pane id.
-
-        ``tab_id`` should be one of: ``tab-timeline``, ``tab-github``,
-        ``tab-plans``, ``tab-workers``.
-        """
+        """Switch to a specific tab by its pane id."""
         for tc in self.query(TabbedContent):
             try:
-                pane = tc.query_one(f"#{tab_id}", TabPane)
+                tc.query_one(f"#{tab_id}", TabPane)
             except Exception:
                 continue
             tc.active = tab_id
-            pane.focus()
             return
         log.warning("Tab %r not found in ProjectStatePane", tab_id)
 
-    def show_orchestrator_section(self) -> None:
-        """Make the bottom orchestrator section visible."""
-        bottom = self.query_one("#bottom-section", TabbedContent)
-        if not bottom.has_class("visible"):
-            bottom.add_class("visible")
-            self.post_message(self.OrchestratorSectionShown())
+    # ------------------------------------------------------------------
+    # Plan selection forwarding
+    # ------------------------------------------------------------------
 
     def on_plan_list_view_plan_selected(
         self, event: PlanListView.PlanSelected
@@ -181,13 +291,8 @@ class ProjectStatePane(Vertical):
         )
         orch.select_plan(event.slug)
 
-    def hide_orchestrator_section(self) -> None:
-        """Hide the bottom orchestrator section."""
-        bottom = self.query_one("#bottom-section", TabbedContent)
-        bottom.remove_class("visible")
-
     # ------------------------------------------------------------------
-    # Timeline fetch (preserved from original)
+    # Timeline fetch
     # ------------------------------------------------------------------
 
     @work(thread=True, exit_on_error=False)

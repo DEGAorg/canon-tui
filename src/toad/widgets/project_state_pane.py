@@ -22,11 +22,7 @@ from toad.widgets.github_state import GitHubStateWidget
 from toad.widgets.github_views.github_timeline_provider import (
     GitHubTimelineProvider,
 )
-from toad.widgets.github_views.timeline_data import (
-    TimelineData,
-    build_timeline,
-)
-from toad.widgets.github_views.timeline_provider import ItemStatus
+from toad.widgets.github_views.timeline_data import build_timeline
 
 log = logging.getLogger(__name__)
 
@@ -55,40 +51,6 @@ def _read_timeline_config(
     except Exception as exc:
         log.warning("Failed to read timeline config: %s", exc)
     return None
-
-
-_STATUS_MAP: dict[ItemStatus, str] = {
-    ItemStatus.DONE: "done",
-    ItemStatus.IN_PROGRESS: "active",
-    ItemStatus.TODO: "pending",
-}
-
-
-def _timeline_data_to_dict(data: TimelineData) -> dict[str, Any]:
-    """Convert ``TimelineData`` to the dict format ``GanttTimeline`` expects."""
-    bars: list[dict[str, Any]] = []
-    for group in data.groups:
-        for item in group.items:
-            bars.append({
-                "label": item.title,
-                "status": _STATUS_MAP.get(item.status, "pending"),
-                "startDay": item.start_day,
-                "days": item.days,
-            })
-
-    gates: list[dict[str, Any]] = [
-        {"label": g.label, "day": g.day, "type": "gate"}
-        for g in data.gates
-    ]
-
-    return {
-        "meta": {
-            "startDate": data.start_date.isoformat(),
-            "totalDays": data.total_days,
-        },
-        "ganttBars": bars,
-        "gates": gates,
-    }
 
 
 # Section IDs — used as TabbedContent widget IDs and toolbar button suffix
@@ -332,9 +294,8 @@ class ProjectStatePane(Vertical):
             milestones = await self._provider.fetch_milestones()
             items = await self._provider.fetch_items()
             timeline = build_timeline(milestones, items)
-            data = _timeline_data_to_dict(timeline)
             gantt = self.query_one("#pane-gantt", GanttTimeline)
-            gantt.timeline_data = data
+            gantt.timeline_data = timeline
         except Exception as exc:
             log.warning("Timeline fetch failed: %s", exc)
 

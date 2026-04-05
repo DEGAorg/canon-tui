@@ -10,7 +10,7 @@ from typing import Any
 import yaml
 from textual import on, work
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Horizontal, Vertical
 from textual.message import Message
 from textual.timer import Timer
 from textual.widgets import Button, TabbedContent, TabPane
@@ -117,10 +117,6 @@ class ProjectStatePane(Vertical):
         height: 1fr;
     }
 
-    ProjectStatePane #gantt-scroll {
-        height: 1fr;
-    }
-
     ProjectStatePane TabPane {
         padding: 0 1;
     }
@@ -164,8 +160,7 @@ class ProjectStatePane(Vertical):
                     id="github_state",
                 )
             with TabPane("Timeline", id="tab-timeline"):
-                with VerticalScroll(id="gantt-scroll"):
-                    yield GanttTimeline(id="pane-gantt")
+                yield GanttTimeline(id="pane-gantt")
 
         # Canon state watcher (invisible, drives State view)
         yield CanonStateWidget(

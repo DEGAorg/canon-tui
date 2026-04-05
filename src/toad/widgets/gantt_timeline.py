@@ -8,7 +8,7 @@ from datetime import date
 
 from rich.text import Text
 from textual.app import ComposeResult
-from textual.containers import Horizontal, HorizontalScroll
+from textual.containers import ScrollableContainer
 from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Static
@@ -39,6 +39,7 @@ BAR_CHAR = "\u2588"  # █
 BAR_DIM = "\u2591"  # ░
 TODAY_CHAR = "\u2502"  # │
 DIAMOND = "\u25c6"  # ◆
+
 
 def compute_track_width(
     total_days: int,
@@ -106,12 +107,8 @@ def compute_bar_position(
 def render_date_axis(
     data: TimelineData,
     track_width: int,
-) -> list[tuple[Text, Text]]:
-    """Build date axis rows: dates on top, gate markers below.
-
-    Returns:
-        List of (label, track) pairs — one per axis row.
-    """
+) -> list[Text]:
+    """Build date axis rows: dates on top, gate markers below."""
     total_days = data.total_days
     start = data.start_date
 
@@ -134,10 +131,8 @@ def render_date_axis(
                 if idx < track_width:
                     date_track[idx] = ch
 
-    date_label = Text(" " * LABEL_WIDTH)
-    date_track_text = Text(
-        "".join(date_track), style=f"bold {AXIS_STYLE}"
-    )
+    date_line = Text(" " * LABEL_WIDTH)
+    date_line.append("".join(date_track), style=f"bold {AXIS_STYLE}")
 
     # Row 2: gate markers
     gate_track = [" "] * track_width
@@ -167,20 +162,17 @@ def render_date_axis(
         end = min(pos + len(tag), track_width)
         gate_text.stylize(GATE_STYLE, pos, end)
 
-    gate_label = Text(" " * LABEL_WIDTH)
+    gate_line = Text(" " * LABEL_WIDTH)
+    gate_line.append_text(gate_text)
 
-    return [(date_label, date_track_text), (gate_label, gate_text)]
+    return [date_line, gate_line]
 
 
 def render_today_row(
     data: TimelineData,
     track_width: int,
-) -> tuple[Text, Text] | None:
-    """Build a today-marker row if today falls within the timeline range.
-
-    Returns:
-        (label, track) pair, or None if today is outside the range.
-    """
+) -> Text | None:
+    """Build a today-marker row if today falls within the timeline range."""
     today = date.today()
     day_offset = (today - data.start_date).days
     if day_offset < 0 or day_offset >= data.total_days:
@@ -189,24 +181,21 @@ def render_today_row(
     pos = int((day_offset / data.total_days) * track_width)
     pos = min(pos, track_width - 1)
 
-    label = Text("TODAY".ljust(LABEL_WIDTH), style=TODAY_STYLE)
+    label_part = Text("TODAY".ljust(LABEL_WIDTH), style=TODAY_STYLE)
     track = Text(
         " " * pos + TODAY_CHAR + " " * (track_width - pos - 1),
         style=TODAY_STYLE,
     )
-    return (label, track)
+    label_part.append_text(track)
+    return label_part
 
 
 def render_bar_row(
     item: TimelineItem,
     total_days: int,
     track_width: int,
-) -> tuple[Text, Text]:
-    """Render one Gantt bar row: label and positioned bar track.
-
-    Returns:
-        (label, track) pair.
-    """
+) -> Text:
+    """Render one Gantt bar row: [status] [label] [positioned bar]."""
     indicator = _status_indicator(item.status)
     raw_label = item.title
     label_str = (indicator + raw_label)[: LABEL_WIDTH - 1].ljust(
@@ -233,29 +222,25 @@ def render_bar_row(
     # Risk items get underlined bars
     bar_style = f"underline {style}" if item.risk_labels else style
 
-    label = Text(label_str, style=label_style)
+    line = Text(label_str, style=label_style)
+    line.append(" " * offset)
+    line.append(char * width, style=bar_style)
 
-    track = Text(" " * offset)
-    track.append(char * width, style=bar_style)
     remaining = track_width - offset - width
     if remaining > 0:
-        track.append(" " * remaining)
+        line.append(" " * remaining)
 
-    return (label, track)
+    return line
 
 
 def render_group_header(
     group: MilestoneGroup,
     data: TimelineData,
     track_width: int,
-) -> tuple[Text, Text]:
-    """Render a milestone group header with optional due-date marker.
-
-    Returns:
-        (label, track) pair.
-    """
+) -> Text:
+    """Render a milestone group header with optional due-date marker."""
     title = f"\u2501\u2501 {group.title} "
-    label = Text(
+    header = Text(
         title[: LABEL_WIDTH - 1].ljust(LABEL_WIDTH), style=GROUP_STYLE
     )
 
@@ -281,73 +266,58 @@ def render_group_header(
             end = min(pos + len(due_label), track_width)
             track.stylize(DUE_STYLE, pos, end)
 
-    return (label, track)
+    header.append_text(track)
+    return header
 
 
 def render_gantt(
     data: TimelineData,
     track_width: int = 60,
-) -> tuple[list[Text], list[Text]]:
-    """Render the full Gantt chart as parallel label and track lists.
-
-    Returns:
-        (labels, tracks) — same-length lists for the label column
-        and the scrollable track column.
-    """
-    labels: list[Text] = []
-    tracks: list[Text] = []
+) -> list[Text]:
+    """Render the full Gantt chart as a list of Rich Text lines."""
+    lines: list[Text] = []
 
     # Date axis (dates + gate markers = 2 rows)
-    for lbl, trk in render_date_axis(data, track_width):
-        labels.append(lbl)
-        tracks.append(trk)
+    lines.extend(render_date_axis(data, track_width))
 
     # Separator
-    labels.append(Text(" " * LABEL_WIDTH, style=AXIS_STYLE))
-    tracks.append(Text("\u2500" * track_width, style=AXIS_STYLE))
+    sep = Text(" " * LABEL_WIDTH, style=AXIS_STYLE)
+    sep.append("\u2500" * track_width, style=AXIS_STYLE)
+    lines.append(sep)
 
     # Today marker
-    today = render_today_row(data, track_width)
-    if today:
-        labels.append(today[0])
-        tracks.append(today[1])
+    today_line = render_today_row(data, track_width)
+    if today_line:
+        lines.append(today_line)
 
     # Milestone groups with headers
     for group in data.groups:
-        lbl, trk = render_group_header(group, data, track_width)
-        labels.append(lbl)
-        tracks.append(trk)
+        lines.append(render_group_header(group, data, track_width))
         for item in group.items:
-            lbl, trk = render_bar_row(
-                item, data.total_days, track_width
+            lines.append(
+                render_bar_row(item, data.total_days, track_width)
             )
-            labels.append(lbl)
-            tracks.append(trk)
 
-    return (labels, tracks)
+    return lines
 
 
 class GanttTimeline(Widget):
-    """A Textual widget that renders a Gantt chart from TimelineData.
+    """Gantt chart with fixed-width-per-week bars and 2D scrolling.
 
-    Uses a frozen label column on the left and a horizontally
-    scrollable track column on the right.
+    The chart content may be wider than the viewport (horizontal
+    scroll) and taller than the viewport (vertical scroll).  Both
+    axes are handled by a single ``ScrollableContainer``.
     """
 
     DEFAULT_CSS = """
     GanttTimeline {
-        height: auto;
-        padding: 0 1;
+        height: 1fr;
     }
-    GanttTimeline #gantt-labels {
-        width: auto;
-        height: auto;
+    GanttTimeline #gantt-scroll {
+        overflow-x: auto;
+        overflow-y: auto;
     }
-    GanttTimeline #gantt-track-scroll {
-        height: auto;
-    }
-    GanttTimeline #gantt-tracks {
-        width: auto;
+    GanttTimeline #gantt-content {
         height: auto;
     }
     """
@@ -355,11 +325,8 @@ class GanttTimeline(Widget):
     timeline_data: reactive[TimelineData | None] = reactive(None)
 
     def compose(self) -> ComposeResult:
-        """Build the frozen-label + scrollable-track layout."""
-        with Horizontal():
-            yield Static("", id="gantt-labels")
-            with HorizontalScroll(id="gantt-track-scroll"):
-                yield Static("", id="gantt-tracks")
+        with ScrollableContainer(id="gantt-scroll"):
+            yield Static("", id="gantt-content")
 
     def watch_timeline_data(self) -> None:
         """Re-render when data changes."""
@@ -374,27 +341,22 @@ class GanttTimeline(Widget):
         """Render the Gantt chart into this widget."""
         if not self.timeline_data:
             try:
-                labels_widget = self.query_one(
-                    "#gantt-labels", Static
+                self.query_one("#gantt-content", Static).update(
+                    "No timeline data"
                 )
-                labels_widget.update("No timeline data")
             except Exception:
                 pass
             return
 
         data = self.timeline_data
         track_width = compute_track_width(data.total_days)
-        labels, tracks = render_gantt(data, track_width)
+        lines = render_gantt(data, track_width)
 
-        labels_widget = self.query_one("#gantt-labels", Static)
-        tracks_widget = self.query_one("#gantt-tracks", Static)
-
-        labels_widget.update(
-            Text("\n").join(labels)
-        )
-        tracks_widget.update(
-            Text("\n").join(tracks)
-        )
+        content = self.query_one("#gantt-content", Static)
+        # Force the content to be wide enough for horizontal scroll
+        total_width = LABEL_WIDTH + track_width + 2
+        content.styles.min_width = total_width
+        content.update(Text("\n").join(lines))
 
         self._scroll_to_today(data, track_width)
 
@@ -403,22 +365,19 @@ class GanttTimeline(Widget):
         data: TimelineData,
         track_width: int,
     ) -> None:
-        """Auto-scroll the track pane so the today marker is visible."""
+        """Auto-scroll so the today marker is visible."""
         today = date.today()
         day_offset = (today - data.start_date).days
         if day_offset < 0 or day_offset >= data.total_days:
             return
-        pos = int((day_offset / data.total_days) * track_width)
-        scroll_container = self.query_one(
-            "#gantt-track-scroll", HorizontalScroll
+        pos = LABEL_WIDTH + int(
+            (day_offset / data.total_days) * track_width
         )
-        # Center the today marker in the visible area.  Use
-        # call_after_refresh so the container knows its content size.
+        scroll = self.query_one("#gantt-scroll", ScrollableContainer)
+
         def _do_scroll() -> None:
-            visible = scroll_container.size.width
-            target = max(0, pos - visible // 2)
-            scroll_container.scroll_to(
-                x=target, animate=False
-            )
+            visible_w = scroll.size.width
+            target_x = max(0, pos - visible_w // 2)
+            scroll.scroll_to(x=target_x, animate=False)
 
         self.call_after_refresh(_do_scroll)

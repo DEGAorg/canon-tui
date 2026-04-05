@@ -12,6 +12,7 @@ from textual.validation import Validator, Number
 from textual import getters
 
 
+from toad import get_version
 from toad.settings import Setting
 from toad.app import ToadApp
 
@@ -197,6 +198,10 @@ class SettingsScreen(ModalScreen):
         with containers.Vertical(id="contents"):
             with containers.VerticalGroup(classes="search-container"):
                 yield Input(id="search", placeholder="Search settings")
+                yield Static(
+                    f"Conductor v{get_version()}",
+                    classes="help",
+                )
             with lazy.Reveal(
                 containers.VerticalScroll(can_focus=False, id="settings-container")
             ):

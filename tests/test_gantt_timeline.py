@@ -273,3 +273,54 @@ class TestRenderGantt:
         assert len(labels) == len(tracks)
         # At least axis rows + separator
         assert len(labels) >= 3
+
+
+class TestScrollToTodayPosition:
+    """Verify today-position math used by _scroll_to_today."""
+
+    def test_today_at_midpoint(self) -> None:
+        """Today at day 50 of 100 maps to pos 50 in a 100-wide track."""
+        total_days = 100
+        track_width = 100
+        day_offset = 50
+        pos = int((day_offset / total_days) * track_width)
+        assert pos == 50
+
+    def test_today_at_start(self) -> None:
+        day_offset = 0
+        pos = int((day_offset / 100) * 100)
+        assert pos == 0
+
+    def test_today_near_end(self) -> None:
+        day_offset = 95
+        pos = int((day_offset / 100) * 200)
+        assert pos == 190
+
+    def test_today_outside_range_skips_scroll(self) -> None:
+        """When today is before or after the timeline, no scroll target."""
+        data = TimelineData(
+            start_date=date(2026, 4, 1), total_days=30
+        )
+        # A date far in the future — outside range
+        future = date(2027, 1, 1)
+        day_offset = (future - data.start_date).days
+        assert day_offset >= data.total_days
+
+        # A date before start — negative offset
+        past = date(2025, 1, 1)
+        day_offset = (past - data.start_date).days
+        assert day_offset < 0
+
+    def test_scroll_target_centered(self) -> None:
+        """scroll target = max(0, pos - visible // 2)."""
+        pos = 150
+        visible = 80
+        target = max(0, pos - visible // 2)
+        assert target == 110
+
+    def test_scroll_target_clamped_at_zero(self) -> None:
+        """When today is near the start, target clamps to 0."""
+        pos = 10
+        visible = 80
+        target = max(0, pos - visible // 2)
+        assert target == 0

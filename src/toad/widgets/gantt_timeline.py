@@ -417,6 +417,8 @@ class GanttTimeline(Widget):
         def _do_scroll() -> None:
             visible = scroll_container.size.width
             target = max(0, pos - visible // 2)
-            scroll_container.scroll_x = target
+            scroll_container.scroll_to(
+                x=target, animate=False
+            )
 
         self.call_after_refresh(_do_scroll)

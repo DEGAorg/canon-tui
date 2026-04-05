@@ -273,16 +273,13 @@ class MainScreen(Screen, can_focus=False):
     def action_toggle_project_state(self) -> None:
         """Toggle the right-side project state pane.
 
-        If opening, shows the State section by default.
-        If closing, hides all sections.
+        Opens with no active section — user picks via toolbar.
         """
         if self.split_enabled:
             pane = self.query_one("#project_state_pane", ProjectStatePane)
             pane.hide_all_sections()
         else:
             self.split_enabled = True
-            pane = self.query_one("#project_state_pane", ProjectStatePane)
-            pane.show_section("section-builder")
 
     def action_refresh_timeline(self) -> None:
         """Re-fetch timeline data from gist."""
@@ -329,15 +326,10 @@ class MainScreen(Screen, can_focus=False):
         self,
         _event: CanonStateWidget.CanonStateDetected,
     ) -> None:
-        """Auto-show Builder or Automation when canon state appears."""
+        """Forward canon state data without auto-showing the pane."""
         _event.stop()
         canon = self.query_one("#canon-state", CanonStateWidget)
-        state = canon.state
-        # Don't auto-open the pane — just ensure State section is visible
-        # when the user opens it with Ctrl+G
-        pane = self.query_one("#project_state_pane", ProjectStatePane)
-        pane.show_section("section-builder")
-        self.call_later(self._forward_canon_state, state)
+        self.call_later(self._forward_canon_state, canon.state)
 
     @on(CanonStateWidget.CanonStateUpdated)
     def _on_canon_updated(
@@ -346,11 +338,7 @@ class MainScreen(Screen, can_focus=False):
     ) -> None:
         """Auto-switch between Builder and Automation on phase change."""
         event.stop()
-        pane = self.query_one("#project_state_pane", ProjectStatePane)
-        state = event.state
-
-        # Forward state data (don't force-open the pane)
-        self._forward_canon_state(state)
+        self._forward_canon_state(event.state)
 
     def watch_split_enabled(self, enabled: bool) -> None:
         """Show/hide the project state pane."""

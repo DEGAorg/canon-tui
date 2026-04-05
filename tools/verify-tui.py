@@ -178,6 +178,54 @@ def verify_gantt(verbose: bool = False) -> bool:
     return len(errors) == 0, errors, results
 
 
+def verify_pane_no_default(verbose: bool = False) -> bool:
+    """Verify ProjectStatePane starts with no active section."""
+    from textual.app import App, ComposeResult
+    from toad.widgets.project_state_pane import (
+        ProjectStatePane,
+        SECTION_GITHUB,
+        SECTION_BUILDER,
+    )
+
+    errors: list[str] = []
+    results: dict[str, object] = {}
+
+    class TestApp(App):
+        CSS = """
+        Screen { overflow: hidden; }
+        ProjectStatePane { display: block; width: 100%; }
+        """
+
+        def compose(self) -> ComposeResult:
+            yield ProjectStatePane(id="psp")
+
+        def on_mount(self) -> None:
+            self.set_timer(1.0, self._check)
+
+        def _check(self) -> None:
+            pane = self.query_one("#psp", ProjectStatePane)
+            github = pane.query_one(f"#{SECTION_GITHUB}")
+            builder = pane.query_one(f"#{SECTION_BUILDER}")
+
+            results["github_visible"] = github.display
+            results["builder_visible"] = builder.display
+
+            if github.display:
+                errors.append("GitHub section visible on mount (should be hidden)")
+            if builder.display:
+                errors.append("Builder section visible on mount (should be hidden)")
+
+            self.exit()
+
+    TestApp().run(headless=True, size=(80, 30))
+
+    if verbose:
+        for key, val in results.items():
+            console.print(f"  {key}: {val}")
+
+    return len(errors) == 0, errors, results
+
+
 def verify_imports(verbose: bool = False) -> bool:
     """Verify all key modules import without error."""
     errors: list[str] = []
@@ -204,7 +252,7 @@ def main() -> None:
     parser.add_argument("--verbose", "-v", action="store_true")
     parser.add_argument(
         "--widget",
-        choices=["gantt", "imports", "all"],
+        choices=["gantt", "imports", "pane", "all"],
         default="all",
     )
     args = parser.parse_args()
@@ -212,6 +260,7 @@ def main() -> None:
     checks = {
         "imports": verify_imports,
         "gantt": verify_gantt,
+        "pane": verify_pane_no_default,
     }
     if args.widget != "all":
         checks = {args.widget: checks[args.widget]}
@@ -221,7 +270,7 @@ def main() -> None:
         console.print(f"\n[bold]Checking {name}...[/bold]")
         passed, errors, _results = check_fn(verbose=args.verbose)
         if passed:
-            console.print(f"  [green]PASS[/green]")
+            console.print("  [green]PASS[/green]")
         else:
             all_passed = False
             for err in errors:

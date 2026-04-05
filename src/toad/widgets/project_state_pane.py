@@ -178,7 +178,7 @@ class ProjectStatePane(Vertical):
     def on_mount(self) -> None:
         # GitHub hidden by default, State visible
         self.query_one(f"#{SECTION_GITHUB}").display = False
-        self.query_one(f"#{SECTION_BUILDER}").display = True
+        self.query_one(f"#{SECTION_BUILDER}").display = False
         self._sync_toolbar()
         self._fetch_timeline()
 

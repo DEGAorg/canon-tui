@@ -7,7 +7,10 @@ import math
 from datetime import date
 
 from rich.text import Text
+from textual.app import ComposeResult
+from textual.containers import Horizontal, HorizontalScroll
 from textual.reactive import reactive
+from textual.widget import Widget
 from textual.widgets import Static
 
 from toad.widgets.github_views.timeline_data import (
@@ -324,17 +327,39 @@ def render_gantt(
     return (labels, tracks)
 
 
-class GanttTimeline(Static):
-    """A Textual widget that renders a Gantt chart from TimelineData."""
+class GanttTimeline(Widget):
+    """A Textual widget that renders a Gantt chart from TimelineData.
+
+    Uses a frozen label column on the left and a horizontally
+    scrollable track column on the right.
+    """
 
     DEFAULT_CSS = """
     GanttTimeline {
         height: auto;
         padding: 0 1;
     }
+    GanttTimeline #gantt-labels {
+        width: auto;
+        height: auto;
+    }
+    GanttTimeline #gantt-track-scroll {
+        height: auto;
+    }
+    GanttTimeline #gantt-tracks {
+        width: auto;
+        height: auto;
+    }
     """
 
     timeline_data: reactive[TimelineData | None] = reactive(None)
+
+    def compose(self) -> ComposeResult:
+        """Build the frozen-label + scrollable-track layout."""
+        with Horizontal():
+            yield Static("", id="gantt-labels")
+            with HorizontalScroll(id="gantt-track-scroll"):
+                yield Static("", id="gantt-tracks")
 
     def watch_timeline_data(self) -> None:
         """Re-render when data changes."""
@@ -348,15 +373,50 @@ class GanttTimeline(Static):
     def _render_chart(self) -> None:
         """Render the Gantt chart into this widget."""
         if not self.timeline_data:
-            self.update("No timeline data")
+            try:
+                labels_widget = self.query_one(
+                    "#gantt-labels", Static
+                )
+                labels_widget.update("No timeline data")
+            except Exception:
+                pass
             return
-        track_width = compute_track_width(self.timeline_data.total_days)
-        labels, track_parts = render_gantt(
-            self.timeline_data, track_width
+
+        data = self.timeline_data
+        track_width = compute_track_width(data.total_days)
+        labels, tracks = render_gantt(data, track_width)
+
+        labels_widget = self.query_one("#gantt-labels", Static)
+        tracks_widget = self.query_one("#gantt-tracks", Static)
+
+        labels_widget.update(
+            Text("\n").join(labels)
         )
-        combined: list[Text] = []
-        for lbl, trk in zip(labels, track_parts):
-            line = lbl.copy()
-            line.append_text(trk)
-            combined.append(line)
-        self.update(Text("\n").join(combined))
+        tracks_widget.update(
+            Text("\n").join(tracks)
+        )
+
+        self._scroll_to_today(data, track_width)
+
+    def _scroll_to_today(
+        self,
+        data: TimelineData,
+        track_width: int,
+    ) -> None:
+        """Auto-scroll the track pane so the today marker is visible."""
+        today = date.today()
+        day_offset = (today - data.start_date).days
+        if day_offset < 0 or day_offset >= data.total_days:
+            return
+        pos = int((day_offset / data.total_days) * track_width)
+        scroll_container = self.query_one(
+            "#gantt-track-scroll", HorizontalScroll
+        )
+        # Center the today marker in the visible area.  Use
+        # call_after_refresh so the container knows its content size.
+        def _do_scroll() -> None:
+            visible = scroll_container.size.width
+            target = max(0, pos - visible // 2)
+            scroll_container.scroll_x = target
+
+        self.call_after_refresh(_do_scroll)

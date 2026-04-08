@@ -173,16 +173,16 @@ class ToolCall(containers.VerticalGroup):
                 else "[$text-secondary 30%]▶ "
             )
 
-        header = Content.assemble(expand_icon, "🔧 ", title)
+        header = Content.assemble(expand_icon, title)
 
         if status == "pending":
-            header += Content.assemble(" ⌛")
+            pass
         elif status == "in_progress":
             pass
         elif status == "failed":
             header += Content.assemble(" ", pill("failed", "$error-muted", "$error"))
         elif status == "completed":
-            header += Content.from_markup(" [$success]✔")
+            header += Content.assemble(" ", pill("ok", "$success-muted", "$success"))
         return header
 
     def watch_expanded(self) -> None:

@@ -126,10 +126,10 @@ SCHEMA: list[SchemaDict] = [
                 "title": "Thinking animation",
                 "help": "Animation to show while waiting for the agent to respond",
                 "type": "choices",
-                "default": "quotes",
+                "default": "status",
                 "choices": [
                     ("Pulse", "pulse"),
-                    ("Quotes", "quotes"),
+                    ("Status text", "status"),
                 ],
             },
             {

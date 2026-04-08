@@ -129,13 +129,13 @@ class MainScreen(Screen, can_focus=False):
 
     def get_loading_widget(self) -> Widget:
         throbber = self.app.settings.get("ui.throbber", str)
-        if throbber == "quotes":
-            from toad.app import QUOTES
+        if throbber == "status":
+            from toad.app import STATUS_MESSAGES
             from toad.widgets.future_text import FutureText
 
-            quotes = QUOTES.copy()
-            random.shuffle(quotes)
-            return FutureText([Content(quote) for quote in quotes])
+            messages = STATUS_MESSAGES.copy()
+            random.shuffle(messages)
+            return FutureText([Content(msg) for msg in messages])
         return super().get_loading_widget()
 
     def _on_screen_resume(self, event: ScreenResume) -> None:
@@ -286,9 +286,7 @@ class MainScreen(Screen, can_focus=False):
         pane = self.query_one("#project_state_pane", ProjectStatePane)
         pane.refresh_timeline()
 
-    def _show_section_tab(
-        self, section_id: str, tab_id: str
-    ) -> None:
+    def _show_section_tab(self, section_id: str, tab_id: str) -> None:
         """Open pane, show a section, and activate a tab."""
         self.split_enabled = True
         pane = self.query_one("#project_state_pane", ProjectStatePane)
@@ -387,16 +385,12 @@ class MainScreen(Screen, can_focus=False):
         message.stop()
         panel_id = message.panel_id
         if panel_id == "project_state":
-            pane = self.query_one(
-                "#project_state_pane", ProjectStatePane
-            )
+            pane = self.query_one("#project_state_pane", ProjectStatePane)
             pane.hide_all_sections()
             return
         section_id = self._PANEL_SECTION_MAP.get(panel_id)
         if section_id:
-            pane = self.query_one(
-                "#project_state_pane", ProjectStatePane
-            )
+            pane = self.query_one("#project_state_pane", ProjectStatePane)
             pane.hide_section(section_id)
 
     def action_focus_prompt(self) -> None:

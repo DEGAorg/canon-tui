@@ -811,7 +811,7 @@ class Conversation(containers.Vertical):
             await self.prompt_history.append(event.body)
             self.prompt_history_index = 0
             if text.startswith("/") and await self.slash_command(text):
-                # Toad has processed the slash command.
+                # Canon has processed the slash command.
                 return
             await self.post(UserInput(text))
             self.window.scroll_end(animate=False)
@@ -1862,17 +1862,17 @@ class Conversation(containers.Vertical):
         self.refresh_bindings()
 
     async def slash_command(self, text: str) -> bool:
-        """Give Toad the opertunity to process slash commands.
+        """Give Canon the opportunity to process slash commands.
 
         Args:
             text: The prompt, including the slash in the first position.
 
         Returns:
-            `True` if Toad has processed the slash command, `False` if it should
-                be forwarded to the agent.
+            `True` if Canon has processed the slash command, `False` if it
+                should be forwarded to the agent.
         """
         command, _, parameters = text[1:].partition(" ")
-        if command == "toad:about":
+        if command == "canon:about":
             from toad import about
             from toad.widgets.markdown_note import MarkdownNote
 
@@ -1881,29 +1881,29 @@ class Conversation(containers.Vertical):
             await self.post(MarkdownNote(about_md, classes="about"))
             self.app.copy_to_clipboard(about_md)
             self.notify(
-                "A copy of /about:toad has been placed in your clipboard",
-                title="/toad:about",
+                "A copy of /canon:about has been placed in your clipboard",
+                title="/canon:about",
             )
             return True
-        elif command == "toad:clear":
+        elif command == "canon:clear":
             try:
                 line_count = max(0, int(parameters) if parameters.strip() else 0)
             except ValueError:
                 self.notify(
                     "Unable to clear—a number was expected",
-                    title="/toad:clear",
+                    title="/canon:clear",
                     severity="error",
                 )
                 return True
             await self.prune_window(line_count, line_count)
             return True
-        elif command == "toad:rename":
+        elif command == "canon:rename":
             name = parameters.strip()
             if not name:
                 self.notify(
                     "Expected a name for the session.\n"
                     'For example: "add comments to blog"',
-                    title="/toad:rename",
+                    title="/canon:rename",
                     severity="error",
                 )
                 return True
@@ -1912,13 +1912,13 @@ class Conversation(containers.Vertical):
                 self.post_message(messages.SessionUpdate(name=name))
                 self.flash(f"Renamed session to [b]'{name}'", style="success")
             return True
-        elif command == "toad:session-close":
+        elif command == "canon:session-close":
             if self.turn == "agent" and self.agent is not None:
                 await self.agent.cancel()
             if self.screen.id is not None:
                 self.post_message(messages.SessionClose(self.screen.id))
                 return True
-        elif command == "toad:session-new":
+        elif command == "canon:session-new":
             if self._agent_data is not None:
                 self.post_message(
                     messages.SessionNew(
@@ -1928,14 +1928,14 @@ class Conversation(containers.Vertical):
                     )
                 )
                 return True
-        elif command == "toad:testimonial":
+        elif command == "canon:testimonial":
             if self.agent_title is not None:
                 default_testimonial = (
-                    f"I'm running {self.agent_title} in the terminal with Toad."
+                    f"I'm running {self.agent_title} in the terminal with Canon."
                 )
             else:
                 default_testimonial = (
-                    "Try Toad, the universal interface for AI in your terminal"
+                    "Try Canon, the unified experience for AI in your terminal"
                 )
 
             testimonial = parameters or default_testimonial
@@ -1943,7 +1943,7 @@ class Conversation(containers.Vertical):
 
             open_tweet_intent(
                 testimonial,
-                url="https://github.com/textualize/toad",
+                url="https://github.com/DEGAorg/canon-tui",
                 via="willmcgugan",
                 hashtags=["ai"],
             )

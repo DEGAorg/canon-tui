@@ -189,6 +189,7 @@ Your favorite agents.
 - **tab / shift+tab** Move to next / previous section
 - **space** Launch highlighted agent
 - **enter** Open agent details
+- **i** Open agent info modal
 """
     BINDING_GROUP_TITLE = "Launcher"
 
@@ -206,7 +207,20 @@ Your favorite agents.
             "Launch",
             tooltip="Launch highlighted agent",
         ),
+        Binding(
+            "i",
+            "info",
+            "Agent Info",
+            tooltip="Open agent info modal",
+        ),
     ]
+
+    def action_info(self) -> None:
+        if self.highlighted is None:
+            return
+        child = self.children[self.highlighted]
+        assert isinstance(child, LauncherItem)
+        self.post_message(StoreScreen.OpenAgentDetails(child._agent["identity"]))
 
     def action_details(self) -> None:
         if self.highlighted is None:
@@ -325,12 +339,21 @@ class AgentGridSelect(GridSelect):
 - **tab / shift+tab** Move to next / previous section
 - **enter** Open agent details
 - **space** Launch the agent (if installed)
+- **i** Open agent info modal
 """
     BINDINGS = [
         Binding("enter", "select", "Details", tooltip="Open agent details"),
         Binding("space", "launch", "Launch", tooltip="Launch highlighted agent"),
+        Binding("i", "info", "Agent Info", tooltip="Open agent info modal"),
     ]
     BINDING_GROUP_TITLE = "Agent Select"
+
+    def action_info(self) -> None:
+        if self.highlighted is None:
+            return
+        child = self.children[self.highlighted]
+        if isinstance(child, AgentItem):
+            self.post_message(StoreScreen.OpenAgentDetails(child.agent["identity"]))
 
     def action_launch(self) -> None:
         if self.highlighted is None:

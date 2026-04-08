@@ -168,12 +168,12 @@ SCHEMA: list[SchemaDict] = [
     {
         "key": "notifications",
         "title": "Notification (toasts) settings",
-        "help": "Customize how Toad displays notifications",
+        "help": "Customize how Canon displays notifications",
         "type": "object",
         "fields": [
             {
                 "key": "system",
-                "title": "Show Toad notifications on your desktop?",
+                "title": "Show Canon notifications on your desktop?",
                 "type": "choices",
                 "default": "blur",
                 "choices": [
@@ -253,7 +253,7 @@ SCHEMA: list[SchemaDict] = [
     {
         "key": "tools",
         "title": "Tool call settings",
-        "help": "Customize how Toad displays agent tool calls",
+        "help": "Customize how Canon displays agent tool calls",
         "type": "object",
         "fields": [
             {

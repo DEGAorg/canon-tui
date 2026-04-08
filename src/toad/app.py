@@ -23,7 +23,6 @@ from textual.timer import Timer
 from textual.notifications import Notify
 from textual.screen import Screen
 
-import toad
 from toad.db import DB
 from toad.settings import Schema, Settings
 from toad.agent_schema import Agent as AgentData
@@ -579,7 +578,7 @@ class ToadApp(App, inherit_bindings=False):
         notification = Notify()
         notification.message = message
         notification.title = title
-        notification.application_name = "Canon" if toad.os == "macos" else "Canon"
+        notification.application_name = "Canon"
         if sound and self.settings.get("notifications.enable_sounds", bool):
             sound_path = str(files("toad.data").joinpath(f"sounds/{sound}.wav"))
             notification.audio = sound_path
@@ -749,7 +748,7 @@ class ToadApp(App, inherit_bindings=False):
                     version_meta.upgrade_message,
                     style="magenta",
                     border_style="dim green",
-                    title="◆ [bold green not dim]Update available![/] ◆",
+                    title="🎛️ [bold green not dim]Update available![/] 🎛️",
                     expand=False,
                     padding=(1, 2),
                 )

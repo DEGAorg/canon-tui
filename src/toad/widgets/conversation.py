@@ -77,9 +77,9 @@ AGENT_FAIL_HELP = {
 
 Check that the agent is installed and up-to-date.
 
-Note that some agents require an ACP adapter to be installed to work with Toad.
+Note that some agents require an ACP adapter to be installed to work with Canon.
 
-- Exit the app, and run `toad` again
+- Exit the app, and run `canon` again
 - Select the agent and hit ENTER
 - Click the dropdown, select "Install"
 - Click the GO button

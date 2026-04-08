@@ -932,26 +932,29 @@ class Conversation(containers.Vertical):
         self.status = message.status_line
 
     @staticmethod
-    def _is_json_noise(text: str) -> bool:
-        """Return True if text is a bare JSON object with no prose."""
-        stripped = text.strip()
-        if stripped.startswith("{") and stripped.endswith("}"):
-            try:
-                import json
+    def _strip_json_lines(text: str) -> str:
+        """Remove lines that are bare JSON objects (tool noise)."""
+        import json
 
-                json.loads(stripped)
-                return True
-            except (json.JSONDecodeError, ValueError):
-                pass
-        return False
+        kept: list[str] = []
+        for line in text.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("{") and stripped.endswith("}"):
+                try:
+                    json.loads(stripped)
+                    continue
+                except json.JSONDecodeError:
+                    pass
+            kept.append(line)
+        return "\n".join(kept)
 
     @on(acp_messages.Update)
     async def on_acp_agent_message(self, message: acp_messages.Update):
         message.stop()
         self._agent_thought = None
-        text = message.text.strip()
-        if text and not self._is_json_noise(text):
-            await self.post_agent_response(message.text)
+        text = self._strip_json_lines(message.text)
+        if text.strip():
+            await self.post_agent_response(text)
 
     @on(acp_messages.UserMessage)
     async def on_acp_user_message(self, message: acp_messages.UserMessage):

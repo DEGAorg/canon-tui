@@ -308,6 +308,17 @@ class CurrentModeUpdate(SchemaDict, total=False):
     sessionUpdate: Required[Literal["current_mode_update"]]
 
 
+class OpenPanel(SchemaDict, total=False):
+    panelId: Required[str]
+    context: dict
+    sessionUpdate: Required[Literal["open_panel"]]
+
+
+class ClosePanel(SchemaDict, total=False):
+    panelId: Required[str]
+    sessionUpdate: Required[Literal["close_panel"]]
+
+
 type SessionUpdate = (
     UserMessageChunk
     | AgentMessageChunk
@@ -317,6 +328,8 @@ type SessionUpdate = (
     | Plan
     | AvailableCommandsUpdate
     | CurrentModeUpdate
+    | OpenPanel
+    | ClosePanel
 )
 
 

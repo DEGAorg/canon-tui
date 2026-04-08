@@ -16,13 +16,13 @@ from textual.binding import Binding, BindingType
 from textual.content import Content
 from textual.reactive import var, reactive
 from textual.app import App
+from textual.theme import Theme
 from textual import events
 from textual.signal import Signal
 from textual.timer import Timer
 from textual.notifications import Notify
 from textual.screen import Screen
 
-import toad
 from toad.db import DB
 from toad.settings import Schema, Settings
 from toad.agent_schema import Agent as AgentData
@@ -62,6 +62,46 @@ DRACULA_TERMINAL_THEME = terminal_theme.TerminalTheme(
         (214, 172, 255),  # bright blue - #D6ACFF
         (255, 146, 223),  # bright magenta - #FF92DF
         (164, 255, 255),  # bright cyan - #A4FFFF
+        (255, 255, 255),  # bright white - #FFFFFF
+    ],
+)
+
+CONDUCTOR_THEME = Theme(
+    name="conductor",
+    primary="#00ff41",
+    secondary="#00d4ff",
+    accent="#00d4ff",
+    foreground="#e8e8e8",
+    background="#0a0a0a",
+    surface="#111111",
+    panel="#151515",
+    warning="#ffaa00",
+    error="#ff4444",
+    success="#00ff41",
+    dark=True,
+)
+
+CONDUCTOR_TERMINAL_THEME = terminal_theme.TerminalTheme(
+    background=(10, 10, 10),  # #0A0A0A
+    foreground=(232, 232, 232),  # #E8E8E8
+    normal=[
+        (21, 21, 21),  # black - #151515
+        (255, 68, 68),  # red - #FF4444
+        (0, 255, 65),  # green - #00FF41
+        (255, 170, 0),  # yellow - #FFAA00
+        (0, 212, 255),  # blue - #00D4FF
+        (189, 147, 249),  # magenta - #BD93F9
+        (0, 212, 255),  # cyan - #00D4FF
+        (232, 232, 232),  # white - #E8E8E8
+    ],
+    bright=[
+        (85, 85, 85),  # bright black - #555555
+        (255, 100, 100),  # bright red - #FF6464
+        (51, 255, 100),  # bright green - #33FF64
+        (255, 200, 50),  # bright yellow - #FFC832
+        (51, 222, 255),  # bright blue - #33DEFF
+        (214, 172, 255),  # bright magenta - #D6ACFF
+        (51, 222, 255),  # bright cyan - #33DEFF
         (255, 255, 255),  # bright white - #FFFFFF
     ],
 )
@@ -229,7 +269,7 @@ def get_sessions_screen() -> SessionsScreen:
 
 
 class ToadApp(App, inherit_bindings=False):
-    """The top level app."""
+    """The top level Canon TUI app."""
 
     CSS_PATH = "toad.tcss"
     SCREENS = {
@@ -265,8 +305,8 @@ class ToadApp(App, inherit_bindings=False):
     scrollbar: reactive[str] = reactive("normal")
     last_ctrl_c_time = reactive(0.0)
     update_required: reactive[bool] = reactive(False)
-    terminal_title: var[str] = var("Toad")
-    terminal_title_icon: var[str] = var("🐸")
+    terminal_title: var[str] = var("Canon")
+    terminal_title_icon: var[str] = var("🎛️")
     terminal_title_flash = var(0)
     terminal_title_blink = var(False)
     project_dir = var(Path)
@@ -282,13 +322,12 @@ class ToadApp(App, inherit_bindings=False):
         project_dir: str | None = None,
         mode: str | None = None,
     ) -> None:
-        """Toad app.
+        """Canon TUI app.
 
         Args:
             agent_data: Agent data to run.
             project_dir: Project directory.
             mode: Initial mode.
-            agent: Agent identity or shor name.
         """
         self.settings_changed_signal: Signal[tuple[int, object]] = Signal(
             self, "settings_changed"
@@ -363,7 +402,7 @@ class ToadApp(App, inherit_bindings=False):
             anon_id = str(uuid.uuid4())
             self.settings.set("anon_id", anon_id)
             self._save_settings()
-            self.call_later(self.capture_event, "toad-install")
+            self.call_later(self.capture_event, "canon-install")
         return anon_id
 
     @property
@@ -491,7 +530,7 @@ class ToadApp(App, inherit_bindings=False):
         width, height = self.size
 
         event_properties = {
-            "toad_version": self.version,
+            "canon_version": self.version,
             "term_program": self.term_program,
             "term_width": width,
             "term_height": height,
@@ -539,7 +578,7 @@ class ToadApp(App, inherit_bindings=False):
         notification = Notify()
         notification.message = message
         notification.title = title
-        notification.application_name = "🐸 Toad" if toad.os == "macos" else "Toad"
+        notification.application_name = "Canon"
         if sound and self.settings.get("notifications.enable_sounds", bool):
             sound_path = str(files("toad.data").joinpath(f"sounds/{sound}.wav"))
             notification.audio = sound_path
@@ -598,6 +637,10 @@ class ToadApp(App, inherit_bindings=False):
         elif key == "ui.theme":
             if isinstance(value, str):
                 self.theme = value
+                if value == "conductor":
+                    self.ansi_theme_dark = CONDUCTOR_TERMINAL_THEME
+                else:
+                    self.ansi_theme_dark = DRACULA_TERMINAL_THEME
         elif key == "ui.scrollbar":
             if isinstance(value, str):
                 self.scrollbar = value
@@ -621,6 +664,7 @@ class ToadApp(App, inherit_bindings=False):
         self.settings_changed_signal.publish((key, value))
 
     async def on_load(self) -> None:
+        self.register_theme(CONDUCTOR_THEME)
         db = await self.get_db()
         await db.create()
         settings_path = self.settings_path
@@ -653,7 +697,7 @@ class ToadApp(App, inherit_bindings=False):
         return session_details
 
     async def on_mount(self) -> None:
-        self.capture_event("toad-run")
+        self.capture_event("canon-run")
         self.anon_id  # Created on frst reference
         if mode := self._initial_mode:
             self.switch_mode(mode)
@@ -665,12 +709,20 @@ class ToadApp(App, inherit_bindings=False):
         self.set_process_title()
         self.update_show_sessions()
 
+        from toad.socket_controller import start_socket_server
+        self._socket_server = await start_socket_server(self)
+
+    async def on_unmount(self) -> None:
+        if hasattr(self, "_socket_server") and self._socket_server:
+            from toad.socket_controller import stop_socket_server
+            await stop_socket_server(self._socket_server)
+
     @work(thread=True, exit_on_error=False)
     def set_process_title(self) -> None:
         try:
             import setproctitle
 
-            setproctitle.setproctitle("toad")
+            setproctitle.setproctitle("canon")
         except Exception:
             pass
 
@@ -696,7 +748,7 @@ class ToadApp(App, inherit_bindings=False):
                     version_meta.upgrade_message,
                     style="magenta",
                     border_style="dim green",
-                    title="🐸 [bold green not dim]Update available![/] 🐸",
+                    title="🎛️ [bold green not dim]Update available![/] 🎛️",
                     expand=False,
                     padding=(1, 2),
                 )
@@ -733,8 +785,12 @@ class ToadApp(App, inherit_bindings=False):
 
     @work
     async def action_settings(self) -> None:
-        await self.push_screen_wait("settings")
+        result = await self.push_screen_wait("settings")
         await self.save_settings()
+        if result == "switch_agent":
+            self.settings.set("agent.default_agent", "")
+            await self.save_settings()
+            await self.switch_mode("store")
 
     async def action_quit(self) -> None:
         """An [action](/guide/actions) to quit the app as soon as possible."""
@@ -805,6 +861,12 @@ class ToadApp(App, inherit_bindings=False):
 
     @on(messages.LaunchAgent)
     def on_launch_agent(self, message: messages.LaunchAgent) -> None:
+        # Save as default agent on fresh launches (not session resumes)
+        if message.session_id is None and message.pk is None:
+            current_default = self.settings.get("agent.default_agent", str)
+            if current_default != message.identity:
+                self.settings.set("agent.default_agent", message.identity)
+                self.call_later(self.save_settings)
         self.launch_agent(
             message.identity,
             agent_session_id=message.session_id,

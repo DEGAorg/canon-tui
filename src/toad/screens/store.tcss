@@ -125,6 +125,22 @@ StoreScreen {
         }
     }
 
+    #conductor-card {
+        padding: 1 2;
+        margin: 0 1;
+        border: tall $primary 50%;
+        height: auto;
+        pointer: pointer;
+        &:hover {
+            background: $panel;
+            border: tall $primary;
+        }
+        &:focus {
+            background: $panel;
+            border: tall $primary;
+        }
+    }
+
     Launcher {
         GridSelect {
             width: 1fr;            

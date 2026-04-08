@@ -109,6 +109,7 @@ class Agent(AgentBase):
         self._message_target: MessagePump | None = None
 
         self._terminal_count: int = 0
+        self._context_injected: bool = False
 
         log_filename: str = generate_datetime_filename(f"{agent['name']}", ".txt")
         if log_path := os.environ.get("TOAD_LOG"):
@@ -297,6 +298,13 @@ class Agent(AgentBase):
 
             case {"sessionUpdate": "current_mode_update", "currentModeId": mode_id}:
                 self.post_message(messages.ModeUpdate(mode_id))
+
+            case {"sessionUpdate": "open_panel", "panelId": panel_id}:
+                context = update.get("context")
+                self.post_message(messages.OpenPanel(panel_id, context))
+
+            case {"sessionUpdate": "close_panel", "panelId": panel_id}:
+                self.post_message(messages.ClosePanel(panel_id))
 
         if status_line is not None:
             self.post_message(messages.UpdateStatusLine(status_line))
@@ -641,7 +649,46 @@ class Agent(AgentBase):
         prompt_content_blocks = await asyncio.to_thread(
             build_prompt, self.project_root_path, prompt
         )
+        if not self._context_injected:
+            self._context_injected = True
+            context = self._load_agent_context()
+            if context:
+                prompt_content_blocks.insert(
+                    0, {"type": "text", "text": context}
+                )
         return await self.acp_session_prompt(prompt_content_blocks)
+
+    @staticmethod
+    def _load_agent_context() -> str:
+        """Load agent context: Conductor prompt + socket commands.
+
+        Reads ``~/.claude/agents/conductor.md`` (if core is installed)
+        and merges it with the bundled socket-commands reference in
+        ``agent_context.md``.  Falls back to socket commands only when
+        the Conductor prompt is absent.
+        """
+        from importlib.resources import files
+
+        conductor_text = ""
+        conductor_path = Path.home() / ".claude" / "agents" / "conductor.md"
+        try:
+            conductor_text = conductor_path.read_text("utf-8")
+        except OSError:
+            pass
+
+        socket_text = ""
+        try:
+            socket_text = (
+                files("toad.data")
+                .joinpath("agent_context.md")
+                .read_text("utf-8")
+            )
+        except Exception:
+            pass
+
+        if conductor_text and socket_text:
+            return f"{conductor_text}\n\n{socket_text}"
+        return conductor_text or socket_text
 
     async def acp_initialize(self):
         """Initialize agent."""

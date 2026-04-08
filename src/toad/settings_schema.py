@@ -8,12 +8,20 @@ SCHEMA: list[SchemaDict] = [
         "type": "object",
         "fields": [
             {
+                "key": "switch_agent",
+                "title": "Switch agent",
+                "help": "Toggle to clear your default agent and pick a new one.",
+                "type": "boolean",
+                "default": False,
+            },
+            {
                 "key": "theme",
                 "title": "Theme",
                 "help": "One of the builtin Textual themes.",
                 "type": "choices",
                 "default": "dracula",
                 "choices": [
+                    "conductor",
                     "atom-one-dark",
                     "atom-one-light",
                     "catppuccin-latte",
@@ -160,12 +168,12 @@ SCHEMA: list[SchemaDict] = [
     {
         "key": "notifications",
         "title": "Notification (toasts) settings",
-        "help": "Customize how Toad displays notifications",
+        "help": "Customize how Canon displays notifications",
         "type": "object",
         "fields": [
             {
                 "key": "system",
-                "title": "Show Toad notifications on your desktop?",
+                "title": "Show Canon notifications on your desktop?",
                 "type": "choices",
                 "default": "blur",
                 "choices": [
@@ -221,6 +229,13 @@ SCHEMA: list[SchemaDict] = [
         "type": "object",
         "fields": [
             {
+                "key": "default_agent",
+                "title": "Default agent",
+                "type": "string",
+                "default": "",
+                "editable": False,
+            },
+            {
                 "key": "thoughts",
                 "title": "Agent thoughts",
                 "help": "Show agent's 'thoughts' in the conversation?",
@@ -238,13 +253,13 @@ SCHEMA: list[SchemaDict] = [
     {
         "key": "tools",
         "title": "Tool call settings",
-        "help": "Customize how Toad displays agent tool calls",
+        "help": "Customize how Canon displays agent tool calls",
         "type": "object",
         "fields": [
             {
                 "key": "expand",
                 "title": "Tool call expand",
-                "help": "When should Toad expand tool calls?",
+                "help": "When should Canon expand tool calls?",
                 "type": "choices",
                 "default": "fail",
                 "choices": [
@@ -280,7 +295,7 @@ SCHEMA: list[SchemaDict] = [
             {
                 "key": "warn_dangerous",
                 "title": "Warn against potentially destructive commands?",
-                "help": "If enabled, Toad will highlight potentially destructive commands that may modify the filesystem outside of the project directory.\n\nNote that false positive [i]and[/] false negatives are possible.",
+                "help": "If enabled, Canon will highlight potentially destructive commands that may modify the filesystem outside of the project directory.\n\nNote that false positive [i]and[/] false negatives are possible.",
                 "type": "boolean",
                 "default": True,
             },
@@ -338,7 +353,7 @@ SCHEMA: list[SchemaDict] = [
                 "title": "Agents to show in the launcher",
                 "type": "text",
                 "default": "",
-            }
+            },
         ],
     },
     {
@@ -350,7 +365,7 @@ SCHEMA: list[SchemaDict] = [
             {
                 "key": "allow_collect",
                 "title": "Allow collection of anonymous usage data?",
-                "help": "Toad can collect basic usage data (number of installs, OS version, agents used, session length etc). This information is associated with a randomly generated UUID (see it in /about:toad) and contains no personal information.\n\nCollecting this information will help me (Will McGugan) convince big tech to take this project seriously. I would appreciate if you left this on, but it is entirely up to you.",
+                "help": "Canon can collect basic usage data (number of installs, OS version, agents used, session length etc). This information is associated with a randomly generated UUID (see it in /about:canon) and contains no personal information.\n\nCollecting this information helps the development team improve Canon. We would appreciate if you left this on, but it is entirely up to you.",
                 "type": "boolean",
                 "default": True,
             },

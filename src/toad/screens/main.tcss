@@ -574,11 +574,22 @@ ModeSwitcher {
     }
 }
 
-MainScreen {    
+MainScreen {
     background: $background;
-    layers: sidebar screen base;    
+    layers: sidebar screen base;
 
-    SideBar {        
+    #main-split {
+        width: 1fr;
+        height: 1fr;
+    }    
+
+    ProjectStatePane {
+        display: none;
+        width: 50%;
+        border-left: tall $primary 30%;
+    }
+
+    SideBar {
         border-right: tall black 10%;
         background: transparent;        
         dock: left;

@@ -142,3 +142,18 @@ class ModeUpdate(AgentMessage):
     """Agent informed us about a mode change."""
 
     current_mode: str
+
+
+@dataclass
+class OpenPanel(AgentMessage):
+    """Agent requests opening a sidebar panel."""
+
+    panel_id: str
+    context: dict[str, Any] | None = None
+
+
+@dataclass
+class ClosePanel(AgentMessage):
+    """Agent requests closing a sidebar panel."""
+
+    panel_id: str

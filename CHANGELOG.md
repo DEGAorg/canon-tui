@@ -1,9 +1,25 @@
 # Changelog
 
+## [Unreleased]
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+
+### Changed
+- Bootstrap install pattern for Canon TUI (`bootstrap-install`) — 2026-04-08
+
+- Conductor TUI Integration (`conductor-tui-integration`) — 2026-04-07
+
+- Horizontal Scroll for Gantt Timeline (`20260405-gantt-hscroll`) — 2026-04-05
+
+- Live GitHub Timeline (replace static timeline.json) (`20260403-live-github-timeline`) — 2026-04-04
+
+- Canon Builder + Automation sections for Toad TUI (`canon-sections`) — 2026-03-30
+
+- Demo TUI Layout — Orchestrator-Aware Split Screen (`demo-tui-layout`) — 2026-03-30
 
 ## [0.6.12] - 2026-03-13
 
@@ -374,7 +390,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Added single character switches https://github.com/batrachianai/toad/pull/135
+- Added single character switches https://github.com/DEGAorg/canon-tui/pull/135
 
 ## [0.5.6] - 2025-12-24
 
@@ -395,50 +411,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - First release. This document will be updated for subsequent releases.
 
-[0.6.12]: https://github.com/batrachianai/toad/compare/v0.6.11...v0.6.12
-[0.6.11]: https://github.com/batrachianai/toad/compare/v0.6.10...v0.6.11
-[0.6.10]: https://github.com/batrachianai/toad/compare/v0.6.9...v0.6.10
-[0.6.9]: https://github.com/batrachianai/toad/compare/v0.6.8...v0.6.9
-[0.6.8]: https://github.com/batrachianai/toad/compare/v0.6.7...v0.6.8
-[0.6.7]: https://github.com/batrachianai/toad/compare/v0.6.6...v0.6.7
-[0.6.6]: https://github.com/batrachianai/toad/compare/v0.6.5...v0.6.6
-[0.6.5]: https://github.com/batrachianai/toad/compare/v0.6.4...v0.6.5
-[0.6.4]: https://github.com/batrachianai/toad/compare/v0.6.3...v0.6.4
-[0.6.3]: https://github.com/batrachianai/toad/compare/v0.6.2...v0.6.3
-[0.6.2]: https://github.com/batrachianai/toad/compare/v0.6.1...v0.6.2
-[0.6.1]: https://github.com/batrachianai/toad/compare/v0.6.0...v0.6.1
-[0.6.0]: https://github.com/batrachianai/toad/compare/v0.5.38...v0.6.0
-[0.5.38]: https://github.com/batrachianai/toad/compare/v0.5.37...v0.5.38
-[0.5.37]: https://github.com/batrachianai/toad/compare/v0.5.36...v0.5.37
-[0.5.36]: https://github.com/batrachianai/toad/compare/v0.5.35...v0.5.36
-[0.5.35]: https://github.com/batrachianai/toad/compare/v0.5.34...v0.5.35
-[0.5.34]: https://github.com/batrachianai/toad/compare/v0.5.33...v0.5.34
-[0.5.33]: https://github.com/batrachianai/toad/compare/v0.5.32...v0.5.33
-[0.5.32]: https://github.com/batrachianai/toad/compare/v0.5.31...v0.5.32
-[0.5.31]: https://github.com/batrachianai/toad/compare/v0.5.30...v0.5.31
-[0.5.30]: https://github.com/batrachianai/toad/compare/v0.5.29...v0.5.30
-[0.5.29]: https://github.com/batrachianai/toad/compare/v0.5.28...v0.5.29
-[0.5.28]: https://github.com/batrachianai/toad/compare/v0.5.27...v0.5.28
-[0.5.27]: https://github.com/batrachianai/toad/compare/v0.5.26...v0.5.27
-[0.5.26]: https://github.com/batrachianai/toad/compare/v0.5.25...v0.5.26
-[0.5.24]: https://github.com/batrachianai/toad/compare/v0.5.23...v0.5.24
-[0.5.23]: https://github.com/batrachianai/toad/compare/v0.5.22...v0.5.23
-[0.5.22]: https://github.com/batrachianai/toad/compare/v0.5.21...v0.5.22
-[0.5.21]: https://github.com/batrachianai/toad/compare/v0.5.20...v0.5.21
-[0.5.20]: https://github.com/batrachianai/toad/compare/v0.5.19...v0.5.20
-[0.5.19]: https://github.com/batrachianai/toad/compare/v0.5.18...v0.5.19
-[0.5.18]: https://github.com/batrachianai/toad/compare/v0.5.17...v0.5.18
-[0.5.17]: https://github.com/batrachianai/toad/compare/v0.5.16...v0.5.17
-[0.5.16]: https://github.com/batrachianai/toad/compare/v0.5.15...v0.5.16
-[0.5.15]: https://github.com/batrachianai/toad/compare/v0.5.14...v0.5.15
-[0.5.14]: https://github.com/batrachianai/toad/compare/v0.5.13...v0.5.14
-[0.5.13]: https://github.com/batrachianai/toad/compare/v0.5.12...v0.5.13
-[0.5.12]: https://github.com/batrachianai/toad/compare/v0.5.11...v0.5.12
-[0.5.11]: https://github.com/batrachianai/toad/compare/v0.5.10...v0.5.11
-[0.5.10]: https://github.com/batrachianai/toad/compare/v0.5.9...v0.5.10
-[0.5.9]: https://github.com/batrachianai/toad/compare/v0.5.8...v0.5.9
-[0.5.8]: https://github.com/batrachianai/toad/compare/v0.5.7...v0.5.8
-[0.5.7]: https://github.com/batrachianai/toad/compare/v0.5.6...v0.5.7
-[0.5.6]: https://github.com/batrachianai/toad/compare/v0.5.5...v0.5.6
-[0.5.5]: https://github.com/batrachianai/toad/compare/v0.5.0...v0.5.5
-[0.5.0]: https://github.com/batrachianai/toad/releases/tag/v0.5.0
+[0.6.12]: https://github.com/DEGAorg/canon-tui/compare/v0.6.11...v0.6.12
+[0.6.11]: https://github.com/DEGAorg/canon-tui/compare/v0.6.10...v0.6.11
+[0.6.10]: https://github.com/DEGAorg/canon-tui/compare/v0.6.9...v0.6.10
+[0.6.9]: https://github.com/DEGAorg/canon-tui/compare/v0.6.8...v0.6.9
+[0.6.8]: https://github.com/DEGAorg/canon-tui/compare/v0.6.7...v0.6.8
+[0.6.7]: https://github.com/DEGAorg/canon-tui/compare/v0.6.6...v0.6.7
+[0.6.6]: https://github.com/DEGAorg/canon-tui/compare/v0.6.5...v0.6.6
+[0.6.5]: https://github.com/DEGAorg/canon-tui/compare/v0.6.4...v0.6.5
+[0.6.4]: https://github.com/DEGAorg/canon-tui/compare/v0.6.3...v0.6.4
+[0.6.3]: https://github.com/DEGAorg/canon-tui/compare/v0.6.2...v0.6.3
+[0.6.2]: https://github.com/DEGAorg/canon-tui/compare/v0.6.1...v0.6.2
+[0.6.1]: https://github.com/DEGAorg/canon-tui/compare/v0.6.0...v0.6.1
+[0.6.0]: https://github.com/DEGAorg/canon-tui/compare/v0.5.38...v0.6.0
+[0.5.38]: https://github.com/DEGAorg/canon-tui/compare/v0.5.37...v0.5.38
+[0.5.37]: https://github.com/DEGAorg/canon-tui/compare/v0.5.36...v0.5.37
+[0.5.36]: https://github.com/DEGAorg/canon-tui/compare/v0.5.35...v0.5.36
+[0.5.35]: https://github.com/DEGAorg/canon-tui/compare/v0.5.34...v0.5.35
+[0.5.34]: https://github.com/DEGAorg/canon-tui/compare/v0.5.33...v0.5.34
+[0.5.33]: https://github.com/DEGAorg/canon-tui/compare/v0.5.32...v0.5.33
+[0.5.32]: https://github.com/DEGAorg/canon-tui/compare/v0.5.31...v0.5.32
+[0.5.31]: https://github.com/DEGAorg/canon-tui/compare/v0.5.30...v0.5.31
+[0.5.30]: https://github.com/DEGAorg/canon-tui/compare/v0.5.29...v0.5.30
+[0.5.29]: https://github.com/DEGAorg/canon-tui/compare/v0.5.28...v0.5.29
+[0.5.28]: https://github.com/DEGAorg/canon-tui/compare/v0.5.27...v0.5.28
+[0.5.27]: https://github.com/DEGAorg/canon-tui/compare/v0.5.26...v0.5.27
+[0.5.26]: https://github.com/DEGAorg/canon-tui/compare/v0.5.25...v0.5.26
+[0.5.24]: https://github.com/DEGAorg/canon-tui/compare/v0.5.23...v0.5.24
+[0.5.23]: https://github.com/DEGAorg/canon-tui/compare/v0.5.22...v0.5.23
+[0.5.22]: https://github.com/DEGAorg/canon-tui/compare/v0.5.21...v0.5.22
+[0.5.21]: https://github.com/DEGAorg/canon-tui/compare/v0.5.20...v0.5.21
+[0.5.20]: https://github.com/DEGAorg/canon-tui/compare/v0.5.19...v0.5.20
+[0.5.19]: https://github.com/DEGAorg/canon-tui/compare/v0.5.18...v0.5.19
+[0.5.18]: https://github.com/DEGAorg/canon-tui/compare/v0.5.17...v0.5.18
+[0.5.17]: https://github.com/DEGAorg/canon-tui/compare/v0.5.16...v0.5.17
+[0.5.16]: https://github.com/DEGAorg/canon-tui/compare/v0.5.15...v0.5.16
+[0.5.15]: https://github.com/DEGAorg/canon-tui/compare/v0.5.14...v0.5.15
+[0.5.14]: https://github.com/DEGAorg/canon-tui/compare/v0.5.13...v0.5.14
+[0.5.13]: https://github.com/DEGAorg/canon-tui/compare/v0.5.12...v0.5.13
+[0.5.12]: https://github.com/DEGAorg/canon-tui/compare/v0.5.11...v0.5.12
+[0.5.11]: https://github.com/DEGAorg/canon-tui/compare/v0.5.10...v0.5.11
+[0.5.10]: https://github.com/DEGAorg/canon-tui/compare/v0.5.9...v0.5.10
+[0.5.9]: https://github.com/DEGAorg/canon-tui/compare/v0.5.8...v0.5.9
+[0.5.8]: https://github.com/DEGAorg/canon-tui/compare/v0.5.7...v0.5.8
+[0.5.7]: https://github.com/DEGAorg/canon-tui/compare/v0.5.6...v0.5.7
+[0.5.6]: https://github.com/DEGAorg/canon-tui/compare/v0.5.5...v0.5.6
+[0.5.5]: https://github.com/DEGAorg/canon-tui/compare/v0.5.0...v0.5.5
+[0.5.0]: https://github.com/DEGAorg/canon-tui/releases/tag/v0.5.0

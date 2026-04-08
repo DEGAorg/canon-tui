@@ -1,6 +1,9 @@
-# Toad
+# Canon TUI
 
-A unified interface for AI in your terminal ([release announcement](https://willmcgugan.github.io/toad-released/)).
+A unified interface for AI in your terminal.
+
+> Canon TUI is a fork of [Toad](https://github.com/batrachian/toad) by
+> [Will McGugan](https://github.com/willmcgugan), licensed under AGPL-3.0.
 
 <table>
 
@@ -24,23 +27,23 @@ A unified interface for AI in your terminal ([release announcement](https://will
 
 Install:
 
-```
-curl -fsSL batrachian.ai/install | sh
+```bash
+uv tool install -U canon-tui --python 3.14
 ```
 
 Run:
 
 ```
-toad
+canon
 ```
 
 See [Getting Started](#getting-started) if you have any problems.
 
-## What is Toad?
+## What is Canon?
 
-Toad is an interface to coding agents, such as Claude, Gemini, Codex, OpenHand, and many more. 
+Canon is an interface to coding agents, such as Claude, Gemini, Codex, OpenHand, and many more. 
 
-Toad blends a traditional shell based workflow and powerful agentic AI, with an intuitive Terminal User Interface.
+Canon blends a traditional shell based workflow and powerful agentic AI, with an intuitive Terminal User Interface.
 
 <table>
   <tbody>
@@ -48,9 +51,9 @@ Toad blends a traditional shell based workflow and powerful agentic AI, with an 
       <td>
         <h3>AI "App store"</h3>
         <p>
-        Find, install, and run dozens of agents directly from the Toad UI.
+        Find, install, and run dozens of agents directly from the Canon UI.
         <p>
-        There is a large and growing list of AI agents that work with Toad.
+        There is a large and growing list of AI agents that work with Canon.
         Discover agents from big tech and smaller Open Source projects.
         <p>
         Developers can add support for their own agents, via the <a href="https://agentclientprotocol.com/overview/introduction">Agent Client Protocol</a>.
@@ -61,17 +64,17 @@ Toad blends a traditional shell based workflow and powerful agentic AI, with an 
     </tr>
     <tr>
       <td>
-      <h3>Toad Shell</h3>
+      <h3>Canon Shell</h3>
       <p>
       While most terminal agent interfaces can run commands (with the <kbd>!</kbd> syntax), they aren't running a shell.
       If you change directory or set environment variables, they won't persist from one command to the next.
       <p>
       Output that contains more than simple text will typically be garbled, and anything interactive will fail or even break the TUI entirely.
       <p>
-      Toad integrates a fully working shell with full-color output, interactive commands, and tab completion.
+      Canon integrates a fully working shell with full-color output, interactive commands, and tab completion.
       Allowing you to interleave prompts for the agent with terminal workflows.
       <p>
-      At time of writing Toad is the only terminal UI which does this.
+      At time of writing Canon is the only terminal UI which does this.
       </td>
       <td><img src="https://github.com/user-attachments/assets/ac9247bb-3daa-4bb7-b3fd-e0bbd22475fa"/></td>        
     </tr>
@@ -79,7 +82,7 @@ Toad blends a traditional shell based workflow and powerful agentic AI, with an 
       <td>
         <h3>Prompt Editor</h3>
         <p>
-        Toad has a nice Markdown prompt editor, with syntax highlighting for code fences.
+        Canon has a nice Markdown prompt editor, with syntax highlighting for code fences.
         Full mouse support, cut and paste, many keybindings and shortcuts.
       </td>
       <td>
@@ -90,9 +93,9 @@ Toad blends a traditional shell based workflow and powerful agentic AI, with an 
       <td>
         <h3>File Picker</h3>
         <p>
-        Add a file to your prompt with <kbd>@</kbd>, and toad will show a fuzzy file picker.
+        Add a file to your prompt with <kbd>@</kbd>, and Canon will show a fuzzy file picker.
         <p>
-        Type a few characters from the filename or folder and Toad will refine the search as you type.
+        Type a few characters from the filename or folder and Canon will refine the search as you type.
         Hit <kbd>enter</kbd> to add the file to the prompt.
         <p>
         The fuzzy picker is great when you know the file you want to mention.
@@ -117,7 +120,7 @@ Toad blends a traditional shell based workflow and powerful agentic AI, with an 
         <h3>Elegant Markdown</h3>
         <p>
         Markdown is the language of LLMs (AI).
-        Toad's streaming Markdown support can display syntax highlighted code fences, elegant tables, quotes, lists, and more.
+        Canon's streaming Markdown support can display syntax highlighted code fences, elegant tables, quotes, lists, and more.
       </td>
       <td>
         <img src="https://github.com/user-attachments/assets/b650b407-f4ab-4cb9-8920-55c15073598e"/>
@@ -129,8 +132,8 @@ Toad blends a traditional shell based workflow and powerful agentic AI, with an 
         <p>
         An intuitive settings system (no need to manually edit JSON files).
         <p>
-        Tune Toad to your liking.
-        Almost everything in Toad may be tweaked.
+        Tune Canon to your liking.
+        Almost everything in Canon may be tweaked.
         If you want to create an ultra-minimal UI with nothing more than a prompt—you can!                
       </td>
       <td>
@@ -167,16 +170,16 @@ Toad blends a traditional shell based workflow and powerful agentic AI, with an 
 
 ## Video
 
-Watch a preview of the Toad User Interface:
+Watch a preview of the Canon User Interface:
 
 https://github.com/user-attachments/assets/ced36f4b-db02-4d29-8a0a-14ec64b22881
 
 
 ## Compatibility
 
-Toad runs on Linux and macOS. Native Windows support is currently lacking (but on the roadmap), but Toad will run quite well with WSL.
+Canon runs on Linux and macOS. Native Windows support is currently lacking (but on the roadmap), but Canon will run quite well with WSL.
 
-Toad is a terminal application.
+Canon is a terminal application.
 Any terminal will work, although if you are using the default terminal on macOS you will get a much reduced experience.
 I recommend [Ghostty](https://ghostty.org/) which is fully featured and has amazing performance.
 
@@ -190,40 +193,32 @@ sudo apt install xclip
 
 ## Getting Started
 
-The easiest way to install Toad is by pasting the following in to your terminal:
-
-```bash
-curl -fsSL batrachian.ai/install | sh
-```
-
-You should now have `toad` installed.
-
-If that doesn't work for any reason, then you can install with the following steps:
-
 First [install UV](https://docs.astral.sh/uv/getting-started/installation/):
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-Then use UV to install toad:
+Then use UV to install Canon:
 
 ```bash
-uv tool install -U batrachian-toad --python 3.14
+uv tool install -U canon-tui --python 3.14
 ```
 
-Toad is also available on [conda-forge](https://conda-forge.org), and can be installed using [pixi](https://pixi.prefix.dev/latest/#installation):
+You should now have `canon` installed.
+
+Canon is also available on [conda-forge](https://conda-forge.org), and can be installed using [pixi](https://pixi.prefix.dev/latest/#installation):
 
 ```bash
-pixi global install batrachian-toad
+pixi global install canon-tui
 ```
 
-## Using Toad
+## Using Canon
 
-Launch Toad with the following:
+Launch Canon with the following:
 
 ```bash
-toad
+canon
 ```
 
 You should see something like this:
@@ -237,48 +232,52 @@ To launch an agent, select it and press <kbd>space</kbd>.
 The footer will always display the most significant keys for the current context.
 To see all the keys, press <kbd>F1</kbd> to display the help panel.
 
-### Toad CLI
+### Canon CLI
 
-When running Toad, the current working directory is assumed to be your project directory.
+When running Canon, the current working directory is assumed to be your project directory.
 To use another project directory, add the path to the command.
 For example:
 
 ```bash
-toad ~/projects/my-awesome-app
+canon ~/projects/my-awesome-app
 ```
 
 If you want to skip the initial agent screen, add the `-a` switch with the name of your chosen agent.
 For example:
 
 ```bash
-toad -a open-hands
+canon -a open-hands
 ```
 
 To see all subcommands and switches, add the `--help` switch:
 
 ```bash
-toad --help
+canon --help
 ```
 
 ### Web server
 
-You can run Toad as a web application.
+You can run Canon as a web application.
 
 Run the following, and click the link in the terminal:
 
 ```bash
-toad serve
+canon serve
 ```
 
 ![textual-serve](https://github.com/user-attachments/assets/1d861d48-d30b-44cd-972d-5986a01360bf)
 
-## Toad development
+## Development
 
-Toad was built by [Will McGugan](https://github.com/willmcgugan) and is currently under active development.
+Canon TUI is built on the [Textual](https://github.com/Textualize/textual) framework and is under active development.
 
-To discuss Toad, see the Discussions tab, or join the #toad channel on the [Textualize discord server](https://discord.gg/Enf6Z3qhVr).
+To discuss Canon, see the [Discussions](https://github.com/DEGAorg/canon-tui/discussions) tab, or open an issue on [GitHub](https://github.com/DEGAorg/canon-tui/issues).
 
+### Upstream attribution
 
+Canon TUI is a fork of [Toad](https://github.com/batrachian/toad), originally
+created by [Will McGugan](https://github.com/willmcgugan). Licensed under
+AGPL-3.0. See [LICENSE](LICENSE) for details.
 
 ### Roadmap
 
@@ -295,41 +294,4 @@ Some planned features:
 
 ### Reporting bugs
 
-This project is trialling a non-traditional approach to issues.
-Before an issue is created, there must be a post in Discussions, approved by a Toad dev (Currently @willmcgugan).
-
-By allowing the discussions to happen in the Discussion tabs, issues can be reserved for actionable tasks with a clear description and goal.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+Open an issue on [GitHub](https://github.com/DEGAorg/canon-tui/issues) with a clear description and steps to reproduce.

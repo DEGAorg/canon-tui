@@ -12,6 +12,7 @@ from textual.validation import Validator, Number
 from textual import getters
 
 
+from toad import get_version
 from toad.settings import Setting
 from toad.app import ToadApp
 
@@ -90,6 +91,22 @@ class SettingsScreen(ModalScreen):
                                 help = Content.styled(
                                     f"default: {default!r}", "$text-secondary"
                                 )
+
+                        # Dynamic help for switch_agent
+                        if setting.key == "ui.switch_agent":
+                            current = settings.get("agent.default_agent", str)
+                            if current:
+                                agent_names = {
+                                    "claude.com": "Claude Code",
+                                    "geminicli.com": "Gemini CLI",
+                                    "openai.com": "Codex CLI",
+                                }
+                                display_name = agent_names.get(current, current)
+                                help = Content.from_markup(
+                                    f"Current: [$text-warning]{display_name}[/]. Toggle to clear and pick a new agent."
+                                )
+                            else:
+                                help = Content.from_markup("No default agent set.")
 
                         yield Static(setting.title, classes="title")
                         if help:
@@ -181,6 +198,10 @@ class SettingsScreen(ModalScreen):
         with containers.Vertical(id="contents"):
             with containers.VerticalGroup(classes="search-container"):
                 yield Input(id="search", placeholder="Search settings")
+                yield Static(
+                    f"Conductor v{get_version()}",
+                    classes="help",
+                )
             with lazy.Reveal(
                 containers.VerticalScroll(can_focus=False, id="settings-container")
             ):
@@ -214,11 +235,6 @@ class SettingsScreen(ModalScreen):
         if event.text_area.name is not None:
             self.app.settings.set(event.text_area.name, event.text_area.text)
 
-    @on(Checkbox.Changed)
-    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
-        if event.checkbox.name is not None:
-            self.app.settings.set(event.checkbox.name, event.checkbox.value)
-
     @on(Select.Changed)
     def on_select_changed(self, event: Select.Changed) -> None:
         if event.select.name is not None:
@@ -248,6 +264,15 @@ class SettingsScreen(ModalScreen):
                 return None
             return None if self.search_input.has_focus else True
         return True
+
+    @on(Checkbox.Changed)
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        if event.checkbox.name == "ui.switch_agent":
+            if event.checkbox.value:
+                self.dismiss("switch_agent")
+            return
+        if event.checkbox.name is not None:
+            self.app.settings.set(event.checkbox.name, event.checkbox.value)
 
     async def action_dismiss(self, result: ScreenResultType | None = None) -> None:
         self.query("#search").focus()

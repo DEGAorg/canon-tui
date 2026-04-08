@@ -62,7 +62,6 @@ from toad.menus import MenuItem
 from toad.widgets.shell_terminal import ShellTerminal
 
 if TYPE_CHECKING:
-    from toad.session_tracker import SessionState
     from toad.widgets.terminal import Terminal
     from toad.widgets.agent_response import AgentResponse
     from toad.widgets.agent_thought import AgentThought
@@ -77,9 +76,9 @@ AGENT_FAIL_HELP = {
 
 Check that the agent is installed and up-to-date.
 
-Note that some agents require an ACP adapter to be installed to work with Toad.
+Note that some agents require an ACP adapter to be installed to work with Canon.
 
-- Exit the app, and run `toad` again
+- Exit the app, and run `canon` again
 - Select the agent and hit ENTER
 - Click the dropdown, select "Install"
 - Click the GO button
@@ -87,7 +86,7 @@ Note that some agents require an ACP adapter to be installed to work with Toad.
 
 Some agents may require you to restart your shell (open a new terminal) after installing.
 
-If that fails, ask for help in [Discussions](https://github.com/batrachianai/toad/discussions)!
+If that fails, ask for help in [Discussions](https://github.com/DEGAorg/canon-tui/discussions)!
 """,
     "no_resume": """\
 ## Agent does not support resume
@@ -96,16 +95,16 @@ The agent or ACP adapter does not support resuming sessions.
 
 Try updating to see if support has been added.
 
-- Exit the app, and run `toad` again
+- Exit the app, and run `canon` again
 - Select the agent and hit ENTER
 - Click the dropdown, select "Update" or "Install" again
 - Repeat the process to update the ACP adapter (if required)
 
-If that fails, ask for help in [Discussions](https://github.com/batrachianai/toad/discussions)!
+If that fails, ask for help in [Discussions](https://github.com/DEGAorg/canon-tui/discussions)!
 """,
 }
 
-HELP_URL = "https://github.com/batrachianai/toad/discussions"
+HELP_URL = "https://github.com/DEGAorg/canon-tui/discussions"
 
 INTERNAL_EROR = f"""\
 ## Internal error
@@ -116,7 +115,7 @@ The agent reported an internal error:
 $ERROR
 ```
 
-This is likely an issue with the agent, and not Toad.
+This is likely an issue with the agent, and not Canon.
 
 - Try the prompt again
 - Report the issue to the Agent developer
@@ -811,7 +810,7 @@ class Conversation(containers.Vertical):
             await self.prompt_history.append(event.body)
             self.prompt_history_index = 0
             if text.startswith("/") and await self.slash_command(text):
-                # Toad has processed the slash command.
+                # Canon has processed the slash command.
                 return
             await self.post(UserInput(text))
             self.window.scroll_end(animate=False)
@@ -936,7 +935,8 @@ class Conversation(containers.Vertical):
     async def on_acp_agent_message(self, message: acp_messages.Update):
         message.stop()
         self._agent_thought = None
-        await self.post_agent_response(message.text)
+        if message.text.strip():
+            await self.post_agent_response(message.text)
 
     @on(acp_messages.UserMessage)
     async def on_acp_user_message(self, message: acp_messages.UserMessage):
@@ -1323,30 +1323,30 @@ class Conversation(containers.Vertical):
 
     def _build_slash_commands(self) -> list[SlashCommand]:
         slash_commands = [
-            SlashCommand("/toad:about", "About Toad"),
+            SlashCommand("/canon:about", "About Canon"),
             SlashCommand(
-                "/toad:clear",
+                "/canon:clear",
                 "Clear conversation window",
                 "<optional number of lines to preserve>",
             ),
             SlashCommand(
-                "/toad:rename",
+                "/canon:rename",
                 "Give the current session a friendly name",
                 "<session name>",
             ),
             SlashCommand(
-                "/toad:session-close",
+                "/canon:session-close",
                 "Close the current session",
             ),
             SlashCommand(
-                "/toad:session-new",
+                "/canon:session-new",
                 "Open a new session in the current working directory",
                 "<initial prompt or command>",
             ),
             SlashCommand(
-                "/toad:testimonial",
-                "Tweet a testimonial regarding Toad",
-                "<what you think of toad>",
+                "/canon:testimonial",
+                "Share a testimonial about Canon",
+                "<what you think of Canon>",
             ),
         ]
 
@@ -1834,7 +1834,7 @@ class Conversation(containers.Vertical):
         )
         console.print(render)
         path = platformdirs.user_pictures_dir()
-        svg_filename = generate_datetime_filename("Toad", ".svg", None)
+        svg_filename = generate_datetime_filename("Canon", ".svg", None)
         svg_path = os.path.expanduser(os.path.join(path, svg_filename))
         console.save_svg(svg_path)
         import webbrowser
@@ -1861,17 +1861,17 @@ class Conversation(containers.Vertical):
         self.refresh_bindings()
 
     async def slash_command(self, text: str) -> bool:
-        """Give Toad the opertunity to process slash commands.
+        """Give Canon the opportunity to process slash commands.
 
         Args:
             text: The prompt, including the slash in the first position.
 
         Returns:
-            `True` if Toad has processed the slash command, `False` if it should
-                be forwarded to the agent.
+            `True` if Canon has processed the slash command, `False` if it
+                should be forwarded to the agent.
         """
         command, _, parameters = text[1:].partition(" ")
-        if command == "toad:about":
+        if command == "canon:about":
             from toad import about
             from toad.widgets.markdown_note import MarkdownNote
 
@@ -1880,29 +1880,29 @@ class Conversation(containers.Vertical):
             await self.post(MarkdownNote(about_md, classes="about"))
             self.app.copy_to_clipboard(about_md)
             self.notify(
-                "A copy of /about:toad has been placed in your clipboard",
-                title="/toad:about",
+                "A copy of /canon:about has been placed in your clipboard",
+                title="/canon:about",
             )
             return True
-        elif command == "toad:clear":
+        elif command == "canon:clear":
             try:
                 line_count = max(0, int(parameters) if parameters.strip() else 0)
             except ValueError:
                 self.notify(
                     "Unable to clear—a number was expected",
-                    title="/toad:clear",
+                    title="/canon:clear",
                     severity="error",
                 )
                 return True
             await self.prune_window(line_count, line_count)
             return True
-        elif command == "toad:rename":
+        elif command == "canon:rename":
             name = parameters.strip()
             if not name:
                 self.notify(
                     "Expected a name for the session.\n"
                     'For example: "add comments to blog"',
-                    title="/toad:rename",
+                    title="/canon:rename",
                     severity="error",
                 )
                 return True
@@ -1911,13 +1911,13 @@ class Conversation(containers.Vertical):
                 self.post_message(messages.SessionUpdate(name=name))
                 self.flash(f"Renamed session to [b]'{name}'", style="success")
             return True
-        elif command == "toad:session-close":
+        elif command == "canon:session-close":
             if self.turn == "agent" and self.agent is not None:
                 await self.agent.cancel()
             if self.screen.id is not None:
                 self.post_message(messages.SessionClose(self.screen.id))
                 return True
-        elif command == "toad:session-new":
+        elif command == "canon:session-new":
             if self._agent_data is not None:
                 self.post_message(
                     messages.SessionNew(
@@ -1927,14 +1927,14 @@ class Conversation(containers.Vertical):
                     )
                 )
                 return True
-        elif command == "toad:testimonial":
+        elif command == "canon:testimonial":
             if self.agent_title is not None:
                 default_testimonial = (
-                    f"I'm running {self.agent_title} in the terminal with Toad."
+                    f"I'm running {self.agent_title} in the terminal with Canon."
                 )
             else:
                 default_testimonial = (
-                    "Try Toad, the universal interface for AI in your terminal"
+                    "Try Canon, the unified experience for AI in your terminal"
                 )
 
             testimonial = parameters or default_testimonial
@@ -1942,10 +1942,9 @@ class Conversation(containers.Vertical):
 
             open_tweet_intent(
                 testimonial,
-                url="https://github.com/textualize/toad",
+                url="https://github.com/DEGAorg/canon-tui",
                 via="willmcgugan",
                 hashtags=["ai"],
             )
             return True
-
         return False

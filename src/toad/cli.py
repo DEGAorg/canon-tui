@@ -53,6 +53,21 @@ async def get_agent_data(launch_agent) -> Agent | None:
     return agents.get(launch_agent)
 
 
+def _read_default_agent() -> str:
+    """Read the default_agent setting from toad.json if it exists."""
+    import json
+    from toad.paths import get_config
+
+    try:
+        settings_path = get_config() / "toad.json"
+        if settings_path.exists():
+            settings = json.loads(settings_path.read_text("utf-8"))
+            return settings.get("agent", {}).get("default_agent", "")
+    except Exception:
+        pass
+    return ""
+
+
 class DefaultCommandGroup(click.Group):
     def parse_args(self, ctx, args):
         if "--help" in args or "-h" in args:
@@ -73,7 +88,7 @@ class DefaultCommandGroup(click.Group):
 @click.option("-v", "--version", is_flag=True, help="Show version and exit.")
 @click.pass_context
 def main(ctx, version):
-    """🐸 Toad — AI for your terminal."""
+    """Canon TUI — AI for your terminal."""
     if version:
         from toad import get_version
 
@@ -88,6 +103,14 @@ def main(ctx, version):
 # @click.pass_context
 @main.command("run")
 @click.argument("project_dir", metavar="PATH", required=False, default=".")
+@click.option(
+    "-d",
+    "--project-dir",
+    "project_dir_option",
+    metavar="PATH",
+    default=None,
+    help="Project directory (overrides positional PATH)",
+)
 @click.option("-a", "--agent", metavar="AGENT", default="")
 @click.option(
     "-p",
@@ -111,18 +134,25 @@ def main(ctx, version):
     default=None,
     help="Public URL to use in conjunction with --serve",
 )
-@click.option("-s", "--serve", is_flag=True, help="Serve Toad as a web application")
+@click.option("-s", "--serve", is_flag=True, help="Serve Canon as a web application")
 def run(
     port: int,
     host: str,
     serve: bool,
     project_dir: str = ".",
+    project_dir_option: str | None = None,
     agent: str = "1",
     public_url: str | None = None,
 ):
-    """Run an installed agent (same as `toad PATH`)."""
+    """Run an installed agent (same as `canon PATH`)."""
 
+    if project_dir_option is not None:
+        project_dir = project_dir_option
     check_directory(project_dir)
+
+    # Check for saved default agent if none specified via CLI
+    if not agent:
+        agent = _read_default_agent()
 
     if agent:
         import asyncio
@@ -156,7 +186,7 @@ def run(
             title=serve_command,
             public_url=public_url,
         )
-        set_process_title("toad --serve")
+        set_process_title("canon --serve")
         server.serve()
     else:
         app.run()
@@ -189,7 +219,7 @@ def run(
     default="localhost",
     help="Host to use in conjunction with --serve",
 )
-@click.option("-s", "--serve", is_flag=True, help="Serve Toad as a web application")
+@click.option("-s", "--serve", is_flag=True, help="Serve Canon as a web application")
 def acp(
     command: str,
     host: str,
@@ -205,13 +235,13 @@ def acp(
     from toad.agent_schema import Agent as AgentData
 
     command_name = command.split(" ", 1)[0].lower()
-    identity = f"{command_name}.custom.batrachian.ai"
+    identity = f"{command_name}.custom.canon.dega.org"
 
     agent_data: AgentData = {
         "identity": identity,
         "name": title or command.partition(" ")[0],
         "short_name": "agent",
-        "url": "https://github.com/batrachianai/toad",
+        "url": "https://github.com/DEGAorg/canon-tui",
         "protocol": "acp",
         "type": "coding",
         "author_name": "Will McGugan",
@@ -239,7 +269,7 @@ def acp(
             port=port,
             title=serve_command,
         )
-        set_process_title("toad acp --serve")
+        set_process_title("canon acp --serve")
         server.serve()
 
     else:
@@ -248,9 +278,9 @@ def acp(
         app.run_on_exit()
 
     print("")
-    print("[bold magenta]Thanks for trying out Toad!")
+    print("[bold magenta]Thanks for trying out Canon!")
     print("Please head to Discussions to share your experiences (good or bad).")
-    print("https://github.com/batrachianai/toad/discussions")
+    print("https://github.com/DEGAorg/canon-tui/discussions")
 
 
 @main.command("settings")
@@ -269,9 +299,9 @@ def replay(path: str) -> None:
 
     Run it in place of a command line to run an ACP agent:
 
-    toad acp "toad replay toad.log"
+    canon acp "canon replay canon.log"
 
-    This will replay the agents output, and Toad will update the conversation as it would a real agent.
+    This will replay the agents output, and Canon will update the conversation as it would a real agent.
     """
     import time
 
@@ -296,13 +326,13 @@ def replay(path: str) -> None:
     help="Public URL for textual_serve Server (e.g. https://example.com)",
 )
 def serve(port: int, host: str, public_url: str | None = None) -> None:
-    """Serve Toad as a web application."""
+    """Serve Canon as a web application."""
     from textual_serve.server import Server
 
     server = Server(
-        sys.argv[0], host=host, port=port, title="Toad", public_url=public_url
+        sys.argv[0], host=host, port=port, title="Canon", public_url=public_url
     )
-    set_process_title("toad serve")
+    set_process_title("canon serve")
     server.serve()
 
 

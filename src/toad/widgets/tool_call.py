@@ -83,6 +83,12 @@ class ToolCall(containers.VerticalGroup):
             tool_call: New Tool call data.
         """
         self.tool_call = tool_call
+        status = tool_call.get("status")
+        if status == "completed":
+            self.display = False
+            return
+        if status == "failed":
+            self.display = True
         await self.recompose()
 
     def get_block_menu(self) -> Iterable[MenuItem]:
@@ -115,9 +121,16 @@ class ToolCall(containers.VerticalGroup):
     def compose(self) -> ComposeResult:
         tool_call = self.tool_call
         assert tool_call is not None
+
+        status = tool_call.get("status")
+        if status == "completed":
+            self.display = False
+            return
+        self.display = True
+
         content: list[protocol.ToolCallContent] = tool_call.get("content", None) or []
 
-        self.set_class(tool_call.get("status") == "failed", "-failed")
+        self.set_class(status == "failed", "-failed")
 
         self.has_content = False
         content_update = list(self._compose_content(content))

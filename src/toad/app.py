@@ -108,21 +108,7 @@ CONDUCTOR_TERMINAL_THEME = terminal_theme.TerminalTheme(
 
 
 STATUS_MESSAGES = [
-    "Analyzing request...",
-    "Processing...",
     "Thinking...",
-    "Evaluating options...",
-    "Preparing response...",
-    "Reviewing context...",
-    "Reasoning through the problem...",
-    "Working on it...",
-    "Assembling response...",
-    "Reading relevant files...",
-    "Searching codebase...",
-    "Building a plan...",
-    "Considering approaches...",
-    "Almost there...",
-    "Synthesizing results...",
 ]
 
 

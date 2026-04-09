@@ -53,7 +53,8 @@ Use your terminal tool to run `canon-ctl`. Do NOT output `/panel` text.
 - **Never echo tool output** — do not include raw JSON, PIDs, return
   codes, or other technical details from canon-ctl responses in your
   messages to the user.
-- **Confirm the outcome in plain language** — e.g. "Timeline is now
-  visible." not "Timeline is now open in the Canon TUI. The TUI is
-  running (PID 97691)."
+- **The panel IS the answer** — when you open a panel, do NOT summarize
+  its contents in chat. The user can see the panel. Just confirm the
+  action: "State is now visible." Do not list plans, PRs, milestones,
+  or other data that the panel already shows.
 - Keep responses short. One sentence is enough for a successful action.

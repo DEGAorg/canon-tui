@@ -19,8 +19,9 @@ SCHEMA: list[SchemaDict] = [
                 "title": "Theme",
                 "help": "One of the builtin Textual themes.",
                 "type": "choices",
-                "default": "dracula",
+                "default": "dega",
                 "choices": [
+                    "dega",
                     "conductor",
                     "atom-one-dark",
                     "atom-one-light",

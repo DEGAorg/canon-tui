@@ -106,6 +106,46 @@ CONDUCTOR_TERMINAL_THEME = terminal_theme.TerminalTheme(
     ],
 )
 
+DEGA_THEME = Theme(
+    name="dega",
+    primary="#00fffc",
+    secondary="#7f00ff",
+    accent="#7f00ff",
+    foreground="#ffffff",
+    background="#000000",
+    surface="#111111",
+    panel="#151515",
+    warning="#cfaa01",
+    error="#ff007f",
+    success="#00fffc",
+    dark=True,
+)
+
+DEGA_TERMINAL_THEME = terminal_theme.TerminalTheme(
+    background=(0, 0, 0),  # #000000
+    foreground=(255, 255, 255),  # #FFFFFF
+    normal=[
+        (21, 21, 21),  # black - #151515
+        (255, 0, 127),  # red - #FF007F (cyberpunk pink)
+        (0, 255, 252),  # green - #00FFFC (neon teal)
+        (207, 170, 1),  # yellow - #CFAA01 (mayan gold)
+        (127, 0, 255),  # blue - #7F00FF (cosmic purple)
+        (255, 0, 127),  # magenta - #FF007F (cyberpunk pink)
+        (0, 255, 252),  # cyan - #00FFFC (neon teal)
+        (255, 255, 255),  # white - #FFFFFF
+    ],
+    bright=[
+        (42, 42, 42),  # bright black - #2A2A2A
+        (255, 51, 153),  # bright red - #FF3399
+        (51, 255, 253),  # bright green - #33FFFD
+        (223, 192, 51),  # bright yellow - #DFC033
+        (153, 51, 255),  # bright blue - #9933FF
+        (255, 51, 153),  # bright magenta - #FF3399
+        (51, 255, 253),  # bright cyan - #33FFFD
+        (255, 255, 255),  # bright white - #FFFFFF
+    ],
+)
+
 
 STATUS_MESSAGES = [
     "Thinking...",
@@ -501,7 +541,9 @@ class ToadApp(App, inherit_bindings=False):
         elif key == "ui.theme":
             if isinstance(value, str):
                 self.theme = value
-                if value == "conductor":
+                if value == "dega":
+                    self.ansi_theme_dark = DEGA_TERMINAL_THEME
+                elif value == "conductor":
                     self.ansi_theme_dark = CONDUCTOR_TERMINAL_THEME
                 else:
                     self.ansi_theme_dark = DRACULA_TERMINAL_THEME
@@ -529,6 +571,7 @@ class ToadApp(App, inherit_bindings=False):
 
     async def on_load(self) -> None:
         self.register_theme(CONDUCTOR_THEME)
+        self.register_theme(DEGA_THEME)
         db = await self.get_db()
         await db.create()
         settings_path = self.settings_path

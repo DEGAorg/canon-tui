@@ -8,17 +8,17 @@ controller is available at `/tmp/toad-*.sock` for controlling the TUI.
 Run these via your terminal tool to control the TUI:
 
 ```bash
-# Open GitHub PRs / plans dashboard (open-only)
+# Show views (open-only — never closes)
 canon-ctl action "screen.show_github"
-
-# Open project timeline / Gantt chart (open-only)
 canon-ctl action "screen.show_timeline"
-
-# Open canon builder — phase, iteration, build logs (open-only)
 canon-ctl action "screen.show_builder"
-
-# Open project state overview (open-only)
 canon-ctl action "screen.show_state"
+
+# Hide views
+canon-ctl action "screen.hide_github"
+canon-ctl action "screen.hide_timeline"
+canon-ctl action "screen.hide_builder"
+canon-ctl action "screen.hide_state"
 
 # Toggle the entire right pane open/closed
 canon-ctl action "screen.toggle_project_state"
@@ -29,21 +29,21 @@ canon-ctl action "screen.refresh_timeline"
 
 ## Behavior
 
-- **`show_*` commands are open-only** — they open (or switch to) their
-  section but never close it. Call them to ensure a view is visible.
-- **`toggle_project_state` is a true toggle** — it opens the right pane
-  if closed, or closes it if open.
-- Multiple sections can be visible at once (they share height evenly).
-  Hiding all sections auto-closes the pane.
+- **`show_*` opens a view**, `hide_*` closes it. Use the matching pair.
+- **`toggle_project_state`** opens or closes the entire right pane.
+- Multiple views can be visible at once (they share height evenly).
+  Hiding all views auto-closes the pane.
+- Timeline and GitHub share a section — hiding one hides both.
 
 ## When to use
 
-- User asks about PRs, plans, or GitHub status → show_github
-- User asks about project timeline, milestones, or schedule → show_timeline
-- User asks about canon build progress, phases, or iterations → show_builder
-- User asks about project state or status overview → show_state
-- User asks to see or hide the project panel → toggle_project_state
-- After updating the timeline → refresh_timeline
+- User asks to see PRs, plans, or GitHub status → `show_github`
+- User asks to see project timeline or schedule → `show_timeline`
+- User asks to see build progress or iterations → `show_builder`
+- User asks to see project state overview → `show_state`
+- User asks to hide any of the above → matching `hide_*` command
+- User asks to see or hide the project panel → `toggle_project_state`
+- After updating the timeline → `refresh_timeline`
 
 Use your terminal tool to run `canon-ctl`. Do NOT output `/panel` text.
 

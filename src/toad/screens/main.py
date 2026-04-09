@@ -315,6 +315,27 @@ class MainScreen(Screen, can_focus=False):
         """Open pane and show State tab."""
         self._show_section_tab("section-builder", "tab-builder")
 
+    def _hide_section(self, section_id: str) -> None:
+        """Hide a section by ID."""
+        pane = self.query_one("#project_state_pane", ProjectStatePane)
+        pane.hide_section(section_id)
+
+    def action_hide_github(self) -> None:
+        """Hide the GitHub section (includes timeline tab)."""
+        self._hide_section("section-github")
+
+    def action_hide_timeline(self) -> None:
+        """Hide the GitHub section (timeline lives inside it)."""
+        self._hide_section("section-github")
+
+    def action_hide_builder(self) -> None:
+        """Hide the Builder/State section."""
+        self._hide_section("section-builder")
+
+    def action_hide_state(self) -> None:
+        """Hide the Builder/State section."""
+        self._hide_section("section-builder")
+
     # ------------------------------------------------------------------
     # Canon auto-show logic
     # ------------------------------------------------------------------

@@ -13,16 +13,20 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.message import Message
 from textual.timer import Timer
-from textual.widgets import Button, TabbedContent, TabPane
+from textual.widgets import Button, DataTable, TabbedContent, TabPane
 
 from toad.widgets.builder_view import BuilderView
 from toad.widgets.canon_state import CanonStateWidget
+from toad.widgets.filter_toolbar import FilterToolbar, FilterState, filter_tasks
 from toad.widgets.gantt_timeline import GanttTimeline
 from toad.widgets.github_state import GitHubStateWidget
 from toad.widgets.github_views.github_timeline_provider import (
     GitHubTimelineProvider,
 )
+from toad.widgets.github_views.task_provider import TaskItem, TaskProvider
 from toad.widgets.github_views.timeline_data import build_timeline
+from toad.widgets.task_detail import TaskDetail
+from toad.widgets.task_table import TaskTable
 
 log = logging.getLogger(__name__)
 
@@ -121,6 +125,18 @@ class ProjectStatePane(Vertical):
         padding: 0 1;
     }
 
+    ProjectStatePane #tasks-body {
+        height: 1fr;
+    }
+
+    ProjectStatePane #task-table {
+        width: 3fr;
+    }
+
+    ProjectStatePane #task-detail {
+        width: 2fr;
+    }
+
     ProjectStatePane .empty-state {
         color: $text-muted;
         text-style: italic;
@@ -139,7 +155,11 @@ class ProjectStatePane(Vertical):
         super().__init__(**kwargs)
         self._project_path = project_path or Path(".").resolve()
         self._refresh_timer: Timer | None = None
+        self._tasks_refresh_timer: Timer | None = None
         self._provider = self._make_provider()
+        self._task_provider = self._make_task_provider()
+        self._all_tasks: list[TaskItem] = []
+        self._filter_state = FilterState()
 
     def compose(self) -> ComposeResult:
         # Toolbar with one button per section
@@ -159,6 +179,11 @@ class ProjectStatePane(Vertical):
                 )
             with TabPane("Timeline", id="tab-timeline"):
                 yield GanttTimeline(id="pane-gantt")
+            with TabPane("Tasks", id="tab-tasks"):
+                yield FilterToolbar(id="task-filter-toolbar")
+                with Horizontal(id="tasks-body"):
+                    yield TaskTable(id="task-table")
+                    yield TaskDetail(id="task-detail")
 
         # Canon state watcher (invisible, drives State view)
         yield CanonStateWidget(
@@ -177,6 +202,7 @@ class ProjectStatePane(Vertical):
         self.query_one(f"#{SECTION_STATE}").display = False
         self._sync_toolbar()
         self._fetch_timeline()
+        self._fetch_tasks()
 
     def watch_display(self, visible: bool) -> None:
         """Stop timer when entire pane is hidden."""
@@ -200,6 +226,17 @@ class ProjectStatePane(Vertical):
         if self._refresh_timer is not None:
             self._refresh_timer.stop()
             self._refresh_timer = None
+
+    @on(TabbedContent.TabActivated, f"#{SECTION_PLANNING}")
+    def _on_planning_tab_activated(
+        self, event: TabbedContent.TabActivated
+    ) -> None:
+        active = event.tabbed_content.active
+        if active == "tab-tasks":
+            self._fetch_tasks()
+            self._start_tasks_timer()
+        else:
+            self._stop_tasks_timer()
 
     # ------------------------------------------------------------------
     # Toolbar — generic button handler
@@ -308,3 +345,106 @@ class ProjectStatePane(Vertical):
     def refresh_timeline(self) -> None:
         """Re-fetch timeline data. Called via socket controller."""
         self._fetch_timeline()
+
+    # ------------------------------------------------------------------
+    # Tasks — provider → filter → table → detail
+    # ------------------------------------------------------------------
+
+    def _make_task_provider(self) -> TaskProvider | None:
+        cfg = _read_timeline_config(self._project_path)
+        if cfg is None:
+            return None
+        return TaskProvider(
+            repo=cfg["repo"],
+            project_number=cfg["project_number"],
+        )
+
+    @work(exclusive=True, exit_on_error=False, group="fetch-tasks")
+    async def _fetch_tasks(self) -> None:
+        if self._task_provider is None:
+            return
+        try:
+            tasks = await self._task_provider.fetch_tasks()
+        except Exception as exc:
+            log.warning("Task fetch failed: %s", exc)
+            return
+        self._all_tasks = tasks
+        self._sync_milestone_options(tasks)
+        self._apply_filters()
+
+    def _sync_milestone_options(self, tasks: list[TaskItem]) -> None:
+        seen: dict[str, str] = {}
+        for task in tasks:
+            if task.milestone_id and task.milestone_id not in seen:
+                seen[task.milestone_id] = task.milestone_title or task.milestone_id
+        try:
+            toolbar = self.query_one("#task-filter-toolbar", FilterToolbar)
+        except Exception:
+            return
+        toolbar.set_milestones([(title, mid) for mid, title in seen.items()])
+
+    def _apply_filters(self) -> None:
+        filtered = filter_tasks(
+            self._all_tasks,
+            status=self._filter_state.status,
+            milestone_id=self._filter_state.milestone_id,
+            priority=self._filter_state.priority,
+        )
+        try:
+            table = self.query_one("#task-table", TaskTable)
+        except Exception:
+            return
+        table.set_tasks(filtered)
+
+    @on(FilterToolbar.FiltersChanged)
+    def _on_filters_changed(self, event: FilterToolbar.FiltersChanged) -> None:
+        event.stop()
+        self._filter_state = event.state
+        self._apply_filters()
+
+    @on(FilterToolbar.RefreshRequested)
+    def _on_tasks_refresh_requested(
+        self, event: FilterToolbar.RefreshRequested
+    ) -> None:
+        event.stop()
+        self._fetch_tasks()
+
+    @on(DataTable.RowSelected, "#task-table")
+    def _on_task_row_selected(self, event: DataTable.RowSelected) -> None:
+        event.stop()
+        key = event.row_key.value
+        if key is None:
+            return
+        table = self.query_one("#task-table", TaskTable)
+        task = table.get_task(str(key))
+        if task is None:
+            return
+        detail = self.query_one("#task-detail", TaskDetail)
+        detail.show_task(task)
+        self._fetch_task_details(task.number)
+
+    @work(exclusive=True, exit_on_error=False, group="fetch-task-details")
+    async def _fetch_task_details(self, number: int) -> None:
+        if self._task_provider is None:
+            return
+        try:
+            details = await self._task_provider.fetch_task_details(number)
+        except Exception as exc:
+            log.warning("Task detail fetch failed for #%s: %s", number, exc)
+            return
+        try:
+            detail = self.query_one("#task-detail", TaskDetail)
+        except Exception:
+            return
+        detail.show_details(details)
+
+    def _start_tasks_timer(self) -> None:
+        if self._tasks_refresh_timer is None:
+            self._tasks_refresh_timer = self.set_interval(
+                self.REFRESH_INTERVAL, self._fetch_tasks
+            )
+
+    def _stop_tasks_timer(self) -> None:
+        if self._tasks_refresh_timer is not None:
+            self._tasks_refresh_timer.stop()
+            self._tasks_refresh_timer = None

@@ -151,7 +151,7 @@ class _SelectionHarness(App[None]):
 
     def __init__(self, tasks: list[TaskItem]) -> None:
         super().__init__()
-        self._tasks = tasks
+        self._task_list = tasks
         self._by_id = {t.id: t for t in tasks}
 
     def compose(self) -> ComposeResult:
@@ -161,7 +161,7 @@ class _SelectionHarness(App[None]):
 
     async def on_mount(self) -> None:
         tbl = self.query_one(TaskTable)
-        tbl.set_tasks(self._tasks)
+        tbl.set_tasks(self._task_list)
         tbl.focus()
 
     def on_data_table_row_selected(
@@ -197,16 +197,16 @@ class _DrillDownHarness(App[None]):
         self, task: TaskItem, details: TaskDetailData
     ) -> None:
         super().__init__()
-        self._task = task
-        self._details = details
+        self._task_item = task
+        self._task_details = details
 
     def compose(self) -> ComposeResult:
         yield TaskDetail(id="detail")
 
     async def on_mount(self) -> None:
         detail = self.query_one(TaskDetail)
-        detail.show_task(self._task)
-        detail.show_details(self._details)
+        detail.show_task(self._task_item)
+        detail.show_details(self._task_details)
         # Focus the "View comments" control so Enter triggers drill-down.
         for btn in detail.query(Button):
             if "comment" in str(btn.label).lower():

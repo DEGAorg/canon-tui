@@ -63,7 +63,7 @@ class TaskDetail(Container):
         classes: str | None = None,
     ) -> None:
         super().__init__(name=name, id=id, classes=classes)
-        self._task: TaskItem | None = None
+        self._task_item: TaskItem | None = None
         self._details: TaskDetailData | None = None
 
     def compose(self) -> ComposeResult:
@@ -87,7 +87,7 @@ class TaskDetail(Container):
 
     def show_task(self, task: TaskItem) -> None:
         """Render immediate task metadata and switch to the detail view."""
-        self._task = task
+        self._task_item = task
         self._details = None
         self.query_one("#task-detail-title", Static).update(
             f"#{task.number} — {task.title}"
@@ -110,12 +110,12 @@ class TaskDetail(Container):
             details.body or "_(no description)_"
         )
         self.query_one("#task-detail-meta-body", Static).update(
-            _render_meta(self._task, details)
+            _render_meta(self._task_item, details)
         )
 
     def clear(self) -> None:
         """Reset back to the empty state."""
-        self._task = None
+        self._task_item = None
         self._details = None
         self.query_one(ContentSwitcher).current = _EMPTY_ID
 
@@ -123,12 +123,12 @@ class TaskDetail(Container):
         """Drill into the full-screen detail view on "View comments"."""
         if event.button.id != "task-detail-view-comments":
             return
-        if self._task is None:
+        if self._task_item is None:
             return
         # Lazy import — avoids a cycle with ``toad.screens``.
         from toad.screens.task_detail_screen import TaskDetailScreen
 
-        self.app.push_screen(TaskDetailScreen(self._task, self._details))
+        self.app.push_screen(TaskDetailScreen(self._task_item, self._details))
         event.stop()
 
 

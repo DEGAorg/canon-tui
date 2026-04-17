@@ -68,6 +68,22 @@ class TaskDetailData:
     url: str = ""
 
 
+def _comments_count(value: Any) -> int:
+    """Parse a ``comments`` field which may be an int or a list of comment dicts.
+
+    ``gh issue list --json comments`` returns the full comment list; older
+    call sites return an integer count. Handle both defensively.
+    """
+    if value is None:
+        return 0
+    if isinstance(value, list):
+        return len(value)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _parse_datetime(value: str | None) -> datetime | None:
     """Parse an ISO-8601 datetime (with trailing Z) into a datetime."""
     if not value:
@@ -150,7 +166,7 @@ class TaskProvider:
                     target_date=_parse_date(board.get("Target Date")),
                     created_at=_parse_datetime(issue.get("createdAt")),
                     updated_at=_parse_datetime(issue.get("updatedAt")),
-                    comments_count=int(issue.get("comments", 0) or 0),
+                    comments_count=_comments_count(issue.get("comments")),
                     url=issue.get("url", ""),
                     state=issue.get("state", "open").lower(),
                 )

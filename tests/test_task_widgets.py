@@ -213,6 +213,21 @@ class TestFilterPredicates:
         )
         assert result == []
 
+    def test_exclude_done_default_drops_done(
+        self, sample_tasks: list[TaskItem]
+    ) -> None:
+        # Default exclude_done=True hides DONE when no explicit status is set.
+        active = filter_tasks(sample_tasks, exclude_done=True)
+        assert all(t.status != ItemStatus.DONE for t in active)
+        # exclude_done=False keeps DONE in the results.
+        all_tasks = filter_tasks(sample_tasks, exclude_done=False)
+        assert any(t.status == ItemStatus.DONE for t in all_tasks)
+        # Explicit DONE status wins over exclude_done flag.
+        done_only = filter_tasks(
+            sample_tasks, status=ItemStatus.DONE, exclude_done=True
+        )
+        assert all(t.status == ItemStatus.DONE for t in done_only)
+
     def test_filter_by_type_label(
         self, sample_tasks: list[TaskItem]
     ) -> None:
@@ -388,87 +403,3 @@ async def test_task_detail_screen_close_button_pops(
         assert not isinstance(app.screen, TaskDetailScreen)
 
 
-# ---------------------------------------------------------------------------
-# StatusStrip helpers
-# ---------------------------------------------------------------------------
-
-
-class TestStatusStripHelpers:
-    """Sparkline / priority / milestone summaries derived from TaskItem list."""
-
-    def test_close_rate_sparkline_zero_when_empty(self) -> None:
-        from toad.widgets.status_strip import _close_rate_sparkline
-
-        assert _close_rate_sparkline([]) == " " * 14
-
-    def test_close_rate_sparkline_reflects_closed_dates(self) -> None:
-        from datetime import datetime, timedelta, timezone
-
-        from toad.widgets.github_views.task_provider import TaskItem
-        from toad.widgets.github_views.timeline_provider import ItemStatus
-        from toad.widgets.status_strip import _close_rate_sparkline
-
-        now = datetime.now(timezone.utc)
-        tasks = [
-            TaskItem(
-                id=str(i),
-                number=i,
-                title=f"t{i}",
-                status=ItemStatus.DONE,
-                updated_at=now - timedelta(days=d),
-            )
-            for i, d in enumerate([0, 0, 1, 1, 5])
-        ]
-        spark = _close_rate_sparkline(tasks, days=14)
-        assert len(spark) == 14
-        # Today gets the highest count (2) — rightmost cell must be the max.
-        # _SPARK_CHARS[0] is space; idx>=1 means non-space.
-        assert spark[-1] != " "
-
-    def test_priority_bar_counts(self) -> None:
-        from toad.widgets.github_views.task_provider import TaskItem
-        from toad.widgets.github_views.timeline_provider import (
-            ItemStatus,
-            Priority,
-        )
-        from toad.widgets.status_strip import _priority_bar
-
-        tasks = [
-            TaskItem(id="1", number=1, title="a", status=ItemStatus.TODO, priority=Priority.P1),
-            TaskItem(id="2", number=2, title="b", status=ItemStatus.TODO, priority=Priority.P1),
-            TaskItem(id="3", number=3, title="c", status=ItemStatus.TODO, priority=Priority.P3),
-        ]
-        bar = _priority_bar(tasks)
-        assert "P1" in bar and " 2" in bar
-        assert "P3" in bar and " 1" in bar
-        assert "P4 ·" in bar  # no P4 items → dot placeholder
-
-    def test_milestone_summary_picks_earliest_target(self) -> None:
-        from datetime import date, timedelta
-
-        from toad.widgets.github_views.task_provider import TaskItem
-        from toad.widgets.github_views.timeline_provider import ItemStatus
-        from toad.widgets.status_strip import _milestone_summary
-
-        today = date.today()
-        tasks = [
-            TaskItem(
-                id="1", number=1, title="a", status=ItemStatus.TODO,
-                milestone_id="A", milestone_title="A",
-                target_date=today + timedelta(days=10),
-            ),
-            TaskItem(
-                id="2", number=2, title="b", status=ItemStatus.DONE,
-                milestone_id="A", milestone_title="A",
-                target_date=today + timedelta(days=10),
-            ),
-            TaskItem(
-                id="3", number=3, title="c", status=ItemStatus.TODO,
-                milestone_id="B", milestone_title="B",
-                target_date=today + timedelta(days=20),
-            ),
-        ]
-        summary = _milestone_summary(tasks)
-        assert "A" in summary
-        assert "1/2" in summary
-        assert "due in 10d" in summary

@@ -33,6 +33,29 @@ Your codebase, evolving at thought speed.
 
 welcome = '''
 Running inside Conductor. Use socket commands (canon-ctl) to control the TUI. Press ctrl+g to toggle the project panel.
+
+## Opening right-pane views from chat
+
+When the user asks to see tasks, PRs, the plan, files, a milestone, the
+timeline, or the build state, emit a `session/update` with `sessionUpdate`
+set to `open_panel` and `panelId` set to one of:
+
+- `board` / `tasks`       — unified issues + PRs board
+- `plans`                 — Board filtered to plan-type items
+- `prs` / `pull_requests` — Board filtered to pull requests
+- `bugs` / `features`     — Board filtered to that type
+- `timeline`              — Gantt timeline
+- `plan`                  — current execution plan (Context section)
+- `files`                 — project file tree (Context section)
+- `state` / `builder`     — build/run state
+
+Filters can be pre-applied via `context.filters`, e.g.
+`{"panelId": "board", "context": {"filters": {"priority": "P1", "status": "in_progress"}}}`.
+
+Do not invent panel IDs. If the user asks for something unmapped, say so
+and suggest the nearest valid panel. After opening a panel, confirm in
+one short sentence the literal panel you opened (e.g. "Opened Board
+filtered to PRs.") — do not claim something opened that didn't.
 '''
 
 

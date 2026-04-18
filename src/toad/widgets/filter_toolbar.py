@@ -23,8 +23,10 @@ from toad.widgets.github_views.task_provider import TaskItem
 from toad.widgets.github_views.timeline_provider import ItemStatus, Priority
 
 _ANY = "__any__"
+_ACTIVE = "__active__"  # Active = Todo + In progress (default, excludes Done)
 
 _STATUS_OPTIONS: tuple[tuple[str, str], ...] = (
+    ("Active (default)", _ACTIVE),
     ("All statuses", _ANY),
     ("Todo", ItemStatus.TODO.value),
     ("In progress", ItemStatus.IN_PROGRESS.value),
@@ -48,6 +50,7 @@ def filter_tasks(
     priority: Priority | None = None,
     title_query: str | None = None,
     type_filter: str | None = None,
+    exclude_done: bool = False,
 ) -> list[TaskItem]:
     """Return the subset of ``tasks`` matching all non-None filters.
 
@@ -55,12 +58,18 @@ def filter_tasks(
     (case-insensitive). Pass ``"plan"`` to return only tasks labelled
     ``type:plan``. The special value ``"all"`` or ``None`` disables the
     type filter.
+
+    ``exclude_done`` drops DONE tasks when no explicit status is set.
+    Ignored when ``status`` is provided (explicit wins).
     """
     query = (title_query or "").strip().lower() or None
     type_needle = _normalize_type(type_filter)
     result: list[TaskItem] = []
     for task in tasks:
-        if status is not None and task.status is not status:
+        if status is not None:
+            if task.status is not status:
+                continue
+        elif exclude_done and task.status is ItemStatus.DONE:
             continue
         if milestone_id is not None and task.milestone_id != milestone_id:
             continue
@@ -103,6 +112,7 @@ class FilterState:
     priority: Priority | None = None
     title_query: str | None = None
     type_filter: str | None = None
+    exclude_done: bool = True  # Default: hide Done tasks
 
 
 class FilterToolbar(Vertical):
@@ -177,7 +187,7 @@ class FilterToolbar(Vertical):
         with Horizontal(id="filter-primary-row"):
             yield Select(
                 options=list(_STATUS_OPTIONS),
-                value=_ANY,
+                value=_ACTIVE,
                 allow_blank=False,
                 id="filter-status",
             )
@@ -235,12 +245,15 @@ class FilterToolbar(Vertical):
 
     def current_state(self) -> FilterState:
         """Read the current filter selections."""
+        raw_status = self._value("#filter-status")
+        status, exclude_done = _to_status_and_flag(raw_status)
         return FilterState(
-            status=_to_status(self._value("#filter-status")),
+            status=status,
             milestone_id=_to_milestone(self._value("#filter-milestone")),
             priority=_to_priority(self._value("#filter-priority")),
             title_query=self._title_query(),
             type_filter=self._active_type_chip(),
+            exclude_done=exclude_done,
         )
 
     def _active_type_chip(self) -> str | None:
@@ -311,13 +324,27 @@ class FilterToolbar(Vertical):
         return query or None
 
 
-def _to_status(raw: str | None) -> ItemStatus | None:
-    if raw is None or raw == _ANY:
-        return None
+def _to_status_and_flag(raw: str | None) -> tuple[ItemStatus | None, bool]:
+    """Parse the status Select value into (status, exclude_done).
+
+    - ``__active__`` → (None, True)   # Todo + In progress
+    - ``__any__``    → (None, False)  # include Done
+    - specific value → (ItemStatus.X, False)
+    - unknown        → (None, True)   # fall back to Active default
+    """
+    if raw is None or raw == _ACTIVE:
+        return (None, True)
+    if raw == _ANY:
+        return (None, False)
     try:
-        return ItemStatus(raw)
+        return (ItemStatus(raw), False)
     except ValueError:
-        return None
+        return (None, True)
+
+
+def _to_status(raw: str | None) -> ItemStatus | None:
+    """Legacy helper — still used elsewhere. Returns only the status."""
+    return _to_status_and_flag(raw)[0]
 
 
 def _to_priority(raw: str | None) -> Priority | None:

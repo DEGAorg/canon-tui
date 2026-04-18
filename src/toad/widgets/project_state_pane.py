@@ -32,7 +32,6 @@ from toad.widgets.github_views.github_timeline_provider import (
     GitHubTimelineProvider,
 )
 from toad.widgets.github_views.task_provider import TaskItem, TaskProvider
-from toad.widgets.status_strip import StatusStrip
 from toad.widgets.github_views.timeline_data import build_timeline
 from toad.widgets.plan import Plan
 from toad.widgets.project_directory_tree import ProjectDirectoryTree
@@ -290,31 +289,29 @@ class ProjectStatePane(Vertical):
                     id="project_directory_tree",
                 )
 
-        # --- Planning section: StatusStrip + Board / Timeline.
+        # --- Planning section: Board / Timeline.
         # Plans and PRs are now chip filters on the Board, not separate tabs.
-        with Vertical(id=SECTION_PLANNING, classes="pane-section"):
-            yield StatusStrip(id="pane-status-strip")
-            with TabbedContent(id="planning-tabs"):
-                with TabPane("Board", id="tab-tasks"):
-                    with ContentSwitcher(initial="tasks-list-view", id="tasks-switcher"):
-                        with Vertical(id="tasks-list-view"):
-                            yield FilterToolbar(id="task-filter-toolbar")
-                            yield Static("", id="tasks-status")
-                            yield TaskTable(id="task-table")
-                        with Vertical(id="tasks-detail-view"):
-                            with Horizontal(id="tasks-breadcrumb"):
-                                yield Button(
-                                    "← Back",
-                                    id="tasks-back-btn",
-                                    tooltip="Return to the task list (Esc)",
-                                )
-                                yield Static(
-                                    "",
-                                    id="tasks-breadcrumb-label",
-                                )
-                            yield TaskDetail(id="task-detail")
-                with TabPane("Timeline", id="tab-timeline"):
-                    yield GanttTimeline(id="pane-gantt")
+        with TabbedContent(id=SECTION_PLANNING, classes="pane-section"):
+            with TabPane("Board", id="tab-tasks"):
+                with ContentSwitcher(initial="tasks-list-view", id="tasks-switcher"):
+                    with Vertical(id="tasks-list-view"):
+                        yield FilterToolbar(id="task-filter-toolbar")
+                        yield Static("", id="tasks-status")
+                        yield TaskTable(id="task-table")
+                    with Vertical(id="tasks-detail-view"):
+                        with Horizontal(id="tasks-breadcrumb"):
+                            yield Button(
+                                "← Back",
+                                id="tasks-back-btn",
+                                tooltip="Return to the task list (Esc)",
+                            )
+                            yield Static(
+                                "",
+                                id="tasks-breadcrumb-label",
+                            )
+                        yield TaskDetail(id="task-detail")
+            with TabPane("Timeline", id="tab-timeline"):
+                yield GanttTimeline(id="pane-gantt")
 
         # Canon state watcher (invisible, drives State view)
         yield CanonStateWidget(
@@ -360,7 +357,7 @@ class ProjectStatePane(Vertical):
             self._refresh_timer.stop()
             self._refresh_timer = None
 
-    @on(TabbedContent.TabActivated, "#planning-tabs")
+    @on(TabbedContent.TabActivated, f"#{SECTION_PLANNING}")
     def _on_planning_tab_activated(
         self, event: TabbedContent.TabActivated
     ) -> None:
@@ -542,13 +539,6 @@ class ProjectStatePane(Vertical):
         self._all_tasks = tasks
         self._sync_milestone_options(tasks)
         self._apply_filters()
-        # Feed the tasks into the status strip for sparkline / priority / milestone.
-        try:
-            strip = self.query_one("#pane-status-strip", StatusStrip)
-        except NoMatches:
-            pass
-        else:
-            strip.tasks = tasks
 
     def _set_tasks_status(self, message: str, *, error: bool = False) -> None:
         """Update the inline status label above the table."""
@@ -581,6 +571,7 @@ class ProjectStatePane(Vertical):
             priority=self._filter_state.priority,
             title_query=self._filter_state.title_query,
             type_filter=self._filter_state.type_filter,
+            exclude_done=self._filter_state.exclude_done,
         )
         try:
             table = self.query_one("#task-table", TaskTable)
@@ -761,6 +752,8 @@ class ProjectStatePane(Vertical):
             priority=priority,
             title_query=title_query,
             type_filter=type_filter,
+            # An explicit status from chat overrides the default hide-done.
+            exclude_done=state.exclude_done if status is None else False,
         )
         # Reflect the applied type in the chip UI so the active state matches.
         try:

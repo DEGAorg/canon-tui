@@ -627,6 +627,7 @@ class ProjectStatePane(Vertical):
             table = self.query_one("#task-table", TaskTable)
         except NoMatches:
             return
+        table.set_column_set(self._filter_state.type_filter or "all")
         table.set_tasks(filtered)
         total = len(self._all_tasks)
         shown = len(filtered)

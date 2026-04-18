@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any, Protocol, runtime_checkable
@@ -29,10 +30,12 @@ log = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class TaskItem:
-    """A project-board task with full metadata for the Tasks widget.
+    """A project-board item (issue or PR) with metadata for the Board widget.
 
     Superset of ``ProviderItem`` including fields only required by the
-    interactive list and detail views.
+    interactive list and detail views. ``is_pr`` distinguishes PRs from
+    issues; the PR-specific fields (``review_state``, ``ci_state``,
+    ``mergeable``) are ``None`` for plain issues.
     """
 
     id: str
@@ -53,6 +56,14 @@ class TaskItem:
     comments_count: int = 0
     url: str = ""
     state: str = "open"
+    # PR-only fields (populated when is_pr=True, else None)
+    is_pr: bool = False
+    review_state: str | None = None  # APPROVED / CHANGES_REQUESTED / REVIEW_REQUIRED / COMMENTED
+    ci_state: str | None = None  # SUCCESS / FAILURE / PENDING / NONE
+    mergeable: str | None = None  # MERGEABLE / CONFLICTING / UNKNOWN
+    author: str | None = None
+    # Plan-only field (populated when labels contain "type:plan")
+    progress_pct: int | None = None  # 0..100, or None when no checklist found
 
 
 @dataclass(frozen=True)
@@ -95,6 +106,87 @@ def _parse_datetime(value: str | None) -> datetime | None:
         return None
 
 
+# Markdown checkbox regex — matches `- [ ]` / `- [x]` / `* [X]` / `+ [ ]`.
+_CHECKBOX_RE = re.compile(r"^\s*[-*+]\s+\[( |x|X)\]", re.MULTILINE)
+
+
+def _progress_from_body(body: str) -> int | None:
+    """Return % of checked boxes in ``body``, or ``None`` if no checklist."""
+    if not body:
+        return None
+    matches = _CHECKBOX_RE.findall(body)
+    if not matches:
+        return None
+    checked = sum(1 for m in matches if m.lower() == "x")
+    return round(100 * checked / len(matches))
+
+
+def _pr_to_task_item(pr: dict[str, Any]) -> TaskItem:
+    """Convert a ``gh pr list --json`` entry to a TaskItem with PR fields."""
+    number = int(pr.get("number", 0))
+    labels = [lbl.get("name", "") for lbl in pr.get("labels", [])]
+    state_raw = str(pr.get("state", "open")).lower()
+    status = ItemStatus.IN_PROGRESS if state_raw == "open" else ItemStatus.DONE
+    if pr.get("isDraft"):
+        status = ItemStatus.TODO
+    milestone_data = pr.get("milestone") or {}
+    milestone_id = (
+        str(milestone_data.get("number"))
+        if milestone_data.get("number") is not None
+        else None
+    )
+    assignees = [
+        a.get("login", "") for a in (pr.get("assignees") or []) if a
+    ]
+    author = (pr.get("author") or {}).get("login") or None
+    rollup = pr.get("statusCheckRollup") or []
+    ci_state = _summarize_ci(rollup)
+    return TaskItem(
+        id=f"pr-{number}",
+        number=number,
+        title=pr.get("title", ""),
+        status=status,
+        milestone_id=milestone_id,
+        milestone_title=milestone_data.get("title", "") or "",
+        priority=_parse_priority(labels),
+        assignees=assignees,
+        labels=labels,
+        risk_labels=_parse_risk_labels(labels),
+        created_at=_parse_datetime(pr.get("createdAt")),
+        updated_at=_parse_datetime(pr.get("updatedAt")),
+        url=pr.get("url", ""),
+        state=state_raw,
+        is_pr=True,
+        review_state=pr.get("reviewDecision") or "REVIEW_REQUIRED",
+        ci_state=ci_state,
+        mergeable=pr.get("mergeable"),
+        author=author,
+    )
+
+
+def _summarize_ci(rollup: list[dict[str, Any]]) -> str:
+    """Collapse a statusCheckRollup list to one of SUCCESS / FAILURE / PENDING / NONE."""
+    if not rollup:
+        return "NONE"
+    states: set[str] = set()
+    for entry in rollup:
+        state = (
+            entry.get("state")
+            or entry.get("conclusion")
+            or entry.get("status")
+            or ""
+        ).upper()
+        if state:
+            states.add(state)
+    if "FAILURE" in states or "ERROR" in states:
+        return "FAILURE"
+    if "PENDING" in states or "IN_PROGRESS" in states or "QUEUED" in states:
+        return "PENDING"
+    if states and all(s in {"SUCCESS", "COMPLETED"} for s in states):
+        return "SUCCESS"
+    return "NONE"
+
+
 @runtime_checkable
 class TaskProviderProtocol(Protocol):
     """Minimal protocol implemented by ``TaskProvider``."""
@@ -121,10 +213,13 @@ class TaskProvider:
         self._project_number = project_number
 
     async def fetch_tasks(self) -> list[TaskItem]:
-        """Fetch every project-board issue enriched with board fields."""
+        """Fetch issues + PRs from the repo, enriched with board fields."""
         issues_task = asyncio.create_task(self._fetch_issues())
         project_task = asyncio.create_task(self._fetch_project_data())
-        issues, project = await asyncio.gather(issues_task, project_task)
+        prs_task = asyncio.create_task(self._fetch_prs())
+        issues, project, prs = await asyncio.gather(
+            issues_task, project_task, prs_task
+        )
         board_map = _build_board_map(project)
 
         tasks: list[TaskItem] = []
@@ -149,6 +244,11 @@ class TaskProvider:
                 a.get("login", "") for a in issue.get("assignees", []) if a
             ]
 
+            # Plan progress = ratio of checked markdown boxes in body.
+            progress_pct: int | None = None
+            if any(lbl.lower() == "type:plan" for lbl in labels):
+                progress_pct = _progress_from_body(issue.get("body", ""))
+
             tasks.append(
                 TaskItem(
                     id=str(number),
@@ -169,8 +269,11 @@ class TaskProvider:
                     comments_count=_comments_count(issue.get("comments")),
                     url=issue.get("url", ""),
                     state=issue.get("state", "open").lower(),
+                    progress_pct=progress_pct,
                 )
             )
+        for pr in prs:
+            tasks.append(_pr_to_task_item(pr))
         return tasks
 
     async def fetch_task_details(self, issue_number: int) -> TaskDetailData:
@@ -208,12 +311,37 @@ class TaskProvider:
             "--state",
             "all",
             "--json",
-            "number,title,state,labels,createdAt,updatedAt,milestone,url,assignees,comments",
+            "number,title,state,labels,body,createdAt,updatedAt,milestone,url,assignees,comments",
             "--limit",
             "200",
         )
         result: list[dict[str, Any]] = json.loads(raw)
         return result
+
+    async def _fetch_prs(self) -> list[dict[str, Any]]:
+        """Fetch open + recently-merged PRs. Used to populate the PRs chip.
+
+        Returns an empty list if the call fails (never blocks issue fetch).
+        """
+        try:
+            raw = await _run_gh(
+                "pr",
+                "list",
+                "--repo",
+                self._repo,
+                "--state",
+                "all",
+                "--json",
+                "number,title,state,labels,createdAt,updatedAt,url,author,"
+                "reviewDecision,statusCheckRollup,mergeable,isDraft,milestone,assignees",
+                "--limit",
+                "100",
+            )
+            result: list[dict[str, Any]] = json.loads(raw)
+            return result
+        except Exception as exc:
+            log.warning("Failed to fetch PRs: %s", exc)
+            return []
 
     async def _fetch_project_data(self) -> dict[str, Any]:
         raw = await _run_gh(

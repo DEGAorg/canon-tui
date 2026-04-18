@@ -84,6 +84,12 @@ def _normalize_type(raw: str | None) -> str | None:
 
 
 def _task_has_type(task: TaskItem, needle: str) -> bool:
+    # "pr" is special — it matches the is_pr flag rather than a label.
+    if needle == "pr":
+        return task.is_pr
+    # For all other types, issues only (exclude PRs unless asked for them).
+    if task.is_pr:
+        return False
     prefix = f"type:{needle}"
     return any(lbl.lower() == prefix for lbl in task.labels)
 
@@ -141,8 +147,9 @@ class FilterToolbar(Vertical):
     """
 
     _TYPE_CHIPS: tuple[tuple[str, str], ...] = (
-        ("All types", "all"),
+        ("All", "all"),
         ("Plans", "plan"),
+        ("PRs", "pr"),
         ("Bugs", "bug"),
         ("Features", "feature"),
     )

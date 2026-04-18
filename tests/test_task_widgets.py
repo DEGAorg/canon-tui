@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
+import json
 from dataclasses import replace
 
 import pytest
@@ -76,6 +77,76 @@ class TestTaskProviderParsing:
         assert t102.priority == Priority.P3
         assert t102.milestone_id is None
         assert t102.assignees == []
+
+    @pytest.mark.asyncio
+    async def test_fetch_tasks_includes_prs(
+        self,
+        mock_issues_payload: str,
+        mock_project_payload: str,
+    ) -> None:
+        """PRs fetched via ``gh pr list`` show up as TaskItems with is_pr=True."""
+        prs_payload = json.dumps(
+            [
+                {
+                    "number": 200,
+                    "title": "feat: wire tasks tab",
+                    "state": "OPEN",
+                    "labels": [{"name": "type:feature"}],
+                    "createdAt": "2026-04-10T10:00:00Z",
+                    "updatedAt": "2026-04-15T12:00:00Z",
+                    "url": "https://github.com/acme/proj/pull/200",
+                    "author": {"login": "alberto"},
+                    "reviewDecision": "APPROVED",
+                    "statusCheckRollup": [
+                        {"state": "SUCCESS"},
+                        {"state": "SUCCESS"},
+                    ],
+                    "mergeable": "MERGEABLE",
+                    "isDraft": False,
+                    "milestone": None,
+                    "assignees": [],
+                }
+            ]
+        )
+        responses = [mock_issues_payload, mock_project_payload, prs_payload]
+
+        async def fake_run_gh(*args: Any, **_kwargs: Any) -> str:
+            # Issues/project return first; pr list third.
+            if "pr" in args:
+                return prs_payload
+            return responses.pop(0)
+
+        with patch(
+            "toad.widgets.github_views.task_provider._run_gh",
+            side_effect=fake_run_gh,
+        ):
+            provider = TaskProvider(repo="acme/proj", project_number=1)
+            tasks = await provider.fetch_tasks()
+
+        prs = [t for t in tasks if t.is_pr]
+        assert len(prs) == 1
+        pr = prs[0]
+        assert pr.id == "pr-200"
+        assert pr.number == 200
+        assert pr.author == "alberto"
+        assert pr.review_state == "APPROVED"
+        assert pr.ci_state == "SUCCESS"
+        assert pr.mergeable == "MERGEABLE"
+
+    def test_progress_from_body_checkboxes(self) -> None:
+        from toad.widgets.github_views.task_provider import _progress_from_body
+
+        assert _progress_from_body("") is None
+        assert _progress_from_body("no checkboxes here") is None
+        body = "\n".join(
+            [
+                "- [x] done",
+                "- [ ] pending",
+                "* [X] also done",
+                "+ [ ] another pending",
+            ]
+        )
+        assert _progress_from_body(body) == 50
 
     @pytest.mark.asyncio
     async def test_fetch_task_details_parses_body_and_prs(

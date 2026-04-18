@@ -25,7 +25,6 @@ from toad.widgets.plan import Plan
 from toad.widgets.throbber import Throbber
 from toad.widgets.conversation import Conversation
 from toad.widgets.project_directory_tree import ProjectDirectoryTree
-from toad.widgets.side_bar import SideBar
 from toad.widgets.builder_view import BuilderView
 from toad.widgets.canon_state import CanonState, CanonStateWidget
 from toad.widgets.project_state_pane import ProjectStatePane
@@ -96,7 +95,6 @@ class MainScreen(Screen, can_focus=False):
     busy_count = var(0)
     throbber: getters.query_one[Throbber] = getters.query_one("#throbber")
     conversation = getters.query_one(Conversation)
-    side_bar = getters.query_one(SideBar)
     project_directory_tree = getters.query_one("#project_directory_tree")
 
     column = reactive(False)
@@ -144,17 +142,6 @@ class MainScreen(Screen, can_focus=False):
     def compose(self) -> ComposeResult:
         with containers.Horizontal(id="main-split"):
             with containers.Center():
-                yield SideBar(
-                    SideBar.Panel("Plan", Plan([])),
-                    SideBar.Panel(
-                        "Project",
-                        ProjectDirectoryTree(
-                            self.project_path,
-                            id="project_directory_tree",
-                        ),
-                        flex=True,
-                    ),
-                )
                 yield Conversation(
                     self.project_path,
                     self._agent,
@@ -177,7 +164,6 @@ class MainScreen(Screen, can_focus=False):
     def update_node_styles(self, animate: bool = True) -> None:
         self.conversation.update_node_styles(animate=animate)
         self.query_one(Footer).update_node_styles(animate=animate)
-        self.query_one(SideBar).update_node_styles(animate=animate)
 
     def action_session_previous(self) -> None:
         if self.screen.id is not None:
@@ -207,7 +193,7 @@ class MainScreen(Screen, can_focus=False):
             )
             for entry in message.entries
         ]
-        self.query_one("SideBar Plan", Plan).entries = entries
+        self.query_one(Plan).entries = entries
 
     @on(messages.SessionUpdate)
     async def on_session_update(self, event: messages.SessionUpdate) -> None:
@@ -263,12 +249,18 @@ class MainScreen(Screen, can_focus=False):
             self.conversation.prompt.suggest(event.option.id)
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
-        if action == "show_sidebar" and self.side_bar.has_focus_within:
-            return False
         return True
 
     def action_show_sidebar(self) -> None:
-        self.side_bar.query_one("Collapsible CollapsibleTitle").focus()
+        """Legacy keybinding — now opens the Context section in the right pane."""
+        self.split_enabled = True
+        pane = self.query_one("#project_state_pane", ProjectStatePane)
+        pane.show_section("section-context")
+        pane.activate_tab("tab-plan")
+        try:
+            pane.query_one(Plan).focus()
+        except Exception:
+            pass
 
     def action_toggle_project_state(self) -> None:
         """Toggle the right-side project state pane.
@@ -374,18 +366,28 @@ class MainScreen(Screen, can_focus=False):
 
     # Map ACP panel IDs to (section_id, tab_id)
     _PANEL_MAP: dict[str, tuple[str, str]] = {
+        "context": ("section-context", "tab-plan"),
+        "plan": ("section-context", "tab-plan"),
+        "files": ("section-context", "tab-files"),
         "planning": ("section-planning", "tab-github"),
         "github": ("section-planning", "tab-github"),
         "timeline": ("section-planning", "tab-timeline"),
+        "tasks": ("section-planning", "tab-tasks"),
+        "board": ("section-planning", "tab-tasks"),
         "state": ("section-state", "tab-builder"),
         "builder": ("section-state", "tab-builder"),
     }
 
     # Map ACP panel IDs to section_id for close
     _PANEL_SECTION_MAP: dict[str, str] = {
+        "context": "section-context",
+        "plan": "section-context",
+        "files": "section-context",
         "planning": "section-planning",
         "github": "section-planning",
         "timeline": "section-planning",
+        "tasks": "section-planning",
+        "board": "section-planning",
         "state": "section-state",
         "builder": "section-state",
     }
@@ -425,10 +427,6 @@ class MainScreen(Screen, can_focus=False):
         await self.app.save_settings()
         await self.app.switch_mode("store")
 
-    @on(SideBar.Dismiss)
-    def on_side_bar_dismiss(self, message: SideBar.Dismiss):
-        message.stop()
-        self.conversation.focus_prompt()
 
     def watch_column(self, column: bool) -> None:
         self.conversation.styles.max_width = (

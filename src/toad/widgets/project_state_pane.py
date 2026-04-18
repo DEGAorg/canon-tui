@@ -34,6 +34,8 @@ from toad.widgets.github_views.github_timeline_provider import (
 )
 from toad.widgets.github_views.task_provider import TaskItem, TaskProvider
 from toad.widgets.github_views.timeline_data import build_timeline
+from toad.widgets.plan import Plan
+from toad.widgets.project_directory_tree import ProjectDirectoryTree
 from toad.widgets.task_detail import TaskDetail
 from toad.widgets.task_table import TaskTable
 
@@ -67,6 +69,7 @@ def _read_timeline_config(
 
 
 # Section IDs — used as TabbedContent widget IDs and toolbar button suffix
+SECTION_CONTEXT = "section-context"
 SECTION_PLANNING = "section-planning"
 SECTION_STATE = "section-state"
 
@@ -81,8 +84,9 @@ class _SectionDef:
 
 # Ordered list of sections — add new ones here
 SECTIONS: list[_SectionDef] = [
-    _SectionDef(SECTION_STATE, "State"),
+    _SectionDef(SECTION_CONTEXT, "Context"),
     _SectionDef(SECTION_PLANNING, "Planning"),
+    _SectionDef(SECTION_STATE, "State"),
 ]
 
 
@@ -225,6 +229,16 @@ class ProjectStatePane(Vertical):
                     id=f"btn-{sec.section_id}",
                 )
 
+        # --- Context section (plan + files) ---
+        with TabbedContent(id=SECTION_CONTEXT, classes="pane-section"):
+            with TabPane("Plan", id="tab-plan"):
+                yield Plan([], id="pane-plan")
+            with TabPane("Files", id="tab-files"):
+                yield ProjectDirectoryTree(
+                    self._project_path,
+                    id="project_directory_tree",
+                )
+
         # --- GitHub / Timeline section ---
         with TabbedContent(id=SECTION_PLANNING, classes="pane-section"):
             with TabPane("GitHub", id="tab-github"):
@@ -265,7 +279,8 @@ class ProjectStatePane(Vertical):
                 yield BuilderView(id="builder-view")
 
     def on_mount(self) -> None:
-        # GitHub hidden by default, State visible
+        # All sections start hidden; the user opens one via toolbar / chat.
+        self.query_one(f"#{SECTION_CONTEXT}").display = False
         self.query_one(f"#{SECTION_PLANNING}").display = False
         self.query_one(f"#{SECTION_STATE}").display = False
         self._sync_toolbar()

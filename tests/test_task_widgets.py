@@ -256,3 +256,42 @@ async def test_escape_pops_task_detail_screen(
         await pilot.press("escape")
         await pilot.pause()
         assert not isinstance(app.screen, TaskDetailScreen)
+
+
+@pytest.mark.asyncio
+async def test_task_detail_screen_back_button_pops(
+    sample_tasks: list[TaskItem], sample_details: TaskDetailData
+) -> None:
+    """Clicking the ← Back button on ``TaskDetailScreen`` pops the screen."""
+    from toad.screens.task_detail_screen import TaskDetailScreen
+
+    app = _SelectionHarness(sample_tasks)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = TaskDetailScreen(sample_tasks[0], sample_details)
+        app.push_screen(screen)
+        await pilot.pause()
+        assert isinstance(app.screen, TaskDetailScreen)
+        back_btn = screen.query_one("#task-screen-back", Button)
+        back_btn.press()
+        await pilot.pause()
+        assert not isinstance(app.screen, TaskDetailScreen)
+
+
+@pytest.mark.asyncio
+async def test_task_detail_screen_close_button_pops(
+    sample_tasks: list[TaskItem], sample_details: TaskDetailData
+) -> None:
+    """Clicking the ✕ close button on ``TaskDetailScreen`` pops the screen."""
+    from toad.screens.task_detail_screen import TaskDetailScreen
+
+    app = _SelectionHarness(sample_tasks)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = TaskDetailScreen(sample_tasks[0], sample_details)
+        app.push_screen(screen)
+        await pilot.pause()
+        close_btn = screen.query_one("#task-screen-close", Button)
+        close_btn.press()
+        await pilot.pause()
+        assert not isinstance(app.screen, TaskDetailScreen)

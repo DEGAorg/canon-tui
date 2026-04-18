@@ -15,7 +15,14 @@ from textual.containers import Horizontal, Vertical
 from textual.css.query import NoMatches
 from textual.message import Message
 from textual.timer import Timer
-from textual.widgets import Button, DataTable, Static, TabbedContent, TabPane
+from textual.widgets import (
+    Button,
+    ContentSwitcher,
+    DataTable,
+    Static,
+    TabbedContent,
+    TabPane,
+)
 
 from toad.widgets.builder_view import BuilderView
 from toad.widgets.canon_state import CanonStateWidget
@@ -94,6 +101,7 @@ class ProjectStatePane(Vertical):
     BINDINGS = [
         Binding("r", "refresh_tasks", "Refresh tasks", show=False),
         Binding("slash", "focus_task_filter", "Filter tasks", show=False),
+        Binding("escape", "tasks_back", "Back to list", show=False),
     ]
 
     DEFAULT_CSS = """
@@ -132,16 +140,43 @@ class ProjectStatePane(Vertical):
         padding: 0 1;
     }
 
-    ProjectStatePane #tasks-body {
+    ProjectStatePane #tasks-switcher {
+        height: 1fr;
+    }
+
+    ProjectStatePane #tasks-list-view,
+    ProjectStatePane #tasks-detail-view {
         height: 1fr;
     }
 
     ProjectStatePane #task-table {
-        width: 3fr;
+        width: 1fr;
+        height: 1fr;
     }
 
     ProjectStatePane #task-detail {
-        width: 2fr;
+        width: 1fr;
+        height: 1fr;
+    }
+
+    ProjectStatePane #tasks-breadcrumb {
+        height: auto;
+        padding: 0 1;
+    }
+
+    ProjectStatePane #tasks-back-btn {
+        min-width: 12;
+        height: 1;
+        margin-right: 1;
+        border: none;
+        background: $primary 30%;
+        color: $text;
+    }
+
+    ProjectStatePane #tasks-breadcrumb-label {
+        color: $text-muted;
+        height: 1;
+        padding-top: 0;
     }
 
     ProjectStatePane #tasks-status {
@@ -179,6 +214,7 @@ class ProjectStatePane(Vertical):
         self._task_provider = self._make_task_provider()
         self._all_tasks: list[TaskItem] = []
         self._filter_state = FilterState()
+        self._selected_task_id: str | None = None
 
     def compose(self) -> ComposeResult:
         # Toolbar with one button per section
@@ -199,11 +235,23 @@ class ProjectStatePane(Vertical):
             with TabPane("Timeline", id="tab-timeline"):
                 yield GanttTimeline(id="pane-gantt")
             with TabPane("Tasks", id="tab-tasks"):
-                yield FilterToolbar(id="task-filter-toolbar")
-                yield Static("", id="tasks-status")
-                with Horizontal(id="tasks-body"):
-                    yield TaskTable(id="task-table")
-                    yield TaskDetail(id="task-detail")
+                with ContentSwitcher(initial="tasks-list-view", id="tasks-switcher"):
+                    with Vertical(id="tasks-list-view"):
+                        yield FilterToolbar(id="task-filter-toolbar")
+                        yield Static("", id="tasks-status")
+                        yield TaskTable(id="task-table")
+                    with Vertical(id="tasks-detail-view"):
+                        with Horizontal(id="tasks-breadcrumb"):
+                            yield Button(
+                                "← Back",
+                                id="tasks-back-btn",
+                                tooltip="Return to the task list (Esc)",
+                            )
+                            yield Static(
+                                "",
+                                id="tasks-breadcrumb-label",
+                            )
+                        yield TaskDetail(id="task-detail")
 
         # Canon state watcher (invisible, drives State view)
         yield CanonStateWidget(
@@ -475,7 +523,34 @@ class ProjectStatePane(Vertical):
             return
         detail = self.query_one("#task-detail", TaskDetail)
         detail.show_task(task)
+        self._selected_task_id = task.id
+        self._show_tasks_detail(task)
         self._fetch_task_details(task.number)
+
+    def _show_tasks_detail(self, task: TaskItem) -> None:
+        """Switch the Tasks tab to the detail view and update the breadcrumb."""
+        try:
+            switcher = self.query_one("#tasks-switcher", ContentSwitcher)
+            label = self.query_one("#tasks-breadcrumb-label", Static)
+        except NoMatches:
+            return
+        label.update(f"  Board  ›  #{task.number} {task.title}")
+        switcher.current = "tasks-detail-view"
+
+    def _show_tasks_list(self) -> None:
+        """Switch back to the list view and restore focus on the table."""
+        try:
+            switcher = self.query_one("#tasks-switcher", ContentSwitcher)
+            table = self.query_one("#task-table", TaskTable)
+        except NoMatches:
+            return
+        switcher.current = "tasks-list-view"
+        table.focus()
+
+    @on(Button.Pressed, "#tasks-back-btn")
+    def _on_tasks_back(self, event: Button.Pressed) -> None:
+        event.stop()
+        self._show_tasks_list()
 
     @work(exclusive=True, exit_on_error=False, group="fetch-task-details")
     async def _fetch_task_details(self, number: int) -> None:
@@ -527,6 +602,17 @@ class ProjectStatePane(Vertical):
         except NoMatches:
             return
         toolbar.focus_title_input()
+
+    def action_tasks_back(self) -> None:
+        """Pop the detail view if active, else no-op."""
+        if not self._is_tasks_tab_active():
+            return
+        try:
+            switcher = self.query_one("#tasks-switcher", ContentSwitcher)
+        except NoMatches:
+            return
+        if switcher.current == "tasks-detail-view":
+            self._show_tasks_list()
 
     # ------------------------------------------------------------------
     # Drill-down — live-updating screen with lazy details

@@ -219,15 +219,21 @@ class ProjectStatePane(Vertical):
         self._all_tasks: list[TaskItem] = []
         self._filter_state = FilterState()
         self._selected_task_id: str | None = None
+        self._stack_mode: bool = False
 
     def compose(self) -> ComposeResult:
-        # Toolbar with one button per section
+        # Toolbar: one button per section + a stack-mode toggle
         with Horizontal(id="pane-toolbar"):
             for sec in SECTIONS:
                 yield Button(
                     sec.button_label,
                     id=f"btn-{sec.section_id}",
                 )
+            yield Button(
+                "⊟",
+                id="btn-stack-toggle",
+                tooltip="Show multiple sections at once (click a section button in this mode to toggle it)",
+            )
 
         # --- Context section (plan + files) ---
         with TabbedContent(id=SECTION_CONTEXT, classes="pane-section"):
@@ -329,11 +335,21 @@ class ProjectStatePane(Vertical):
     @on(Button.Pressed)
     def _on_toolbar_button(self, event: Button.Pressed) -> None:
         btn_id = event.button.id or ""
+        if btn_id == "btn-stack-toggle":
+            event.stop()
+            self._stack_mode = not self._stack_mode
+            self._sync_toolbar()
+            return
         if not btn_id.startswith("btn-section-"):
             return
         event.stop()
         section_id = btn_id.removeprefix("btn-")
-        self.toggle_section(section_id)
+        if self._stack_mode:
+            # Multi-select mode — toggle the single section
+            self.toggle_section(section_id)
+        else:
+            # Default accordion mode — show only the clicked section
+            self.show_single_section(section_id)
 
     def _sync_toolbar(self) -> None:
         """Sync all toolbar buttons and fire AllSectionsHidden if needed."""
@@ -346,6 +362,22 @@ class ProjectStatePane(Vertical):
                 any_visible = True
             else:
                 btn.remove_class("active")
+        # Stack-mode toggle visual state
+        try:
+            stack_btn = self.query_one("#btn-stack-toggle", Button)
+        except NoMatches:
+            stack_btn = None
+        if stack_btn is not None:
+            if self._stack_mode:
+                stack_btn.add_class("active")
+                stack_btn.tooltip = (
+                    "Multi-section mode ON — click again for single-section"
+                )
+            else:
+                stack_btn.remove_class("active")
+                stack_btn.tooltip = (
+                    "Show multiple sections at once (accordion mode is on)"
+                )
         if not any_visible:
             self.post_message(self.AllSectionsHidden())
 
@@ -358,6 +390,15 @@ class ProjectStatePane(Vertical):
         self.query_one(f"#{section_id}").display = True
         self._sync_toolbar()
         self._sync_timeline_timer(section_id, visible=True)
+
+    def show_single_section(self, section_id: str) -> None:
+        """Show ``section_id`` and hide all other sections (accordion)."""
+        for sec in SECTIONS:
+            visible = sec.section_id == section_id
+            widget = self.query_one(f"#{sec.section_id}")
+            widget.display = visible
+            self._sync_timeline_timer(sec.section_id, visible=visible)
+        self._sync_toolbar()
 
     def hide_section(self, section_id: str) -> None:
         """Hide a section by its ID."""

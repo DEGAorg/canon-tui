@@ -152,6 +152,77 @@ Need help? Ask on {HELP_URL}
 """
 
 
+_PANEL_KEYWORDS: tuple[tuple[tuple[str, ...], str], ...] = (
+    # (keywords, panel_id) — order matters; more-specific first.
+    (("pull requests", "pull request", " prs ", " pr "), "prs"),
+    (("the board", "board"), "board"),
+    (("tasks", "issues"), "board"),
+    (("plans",), "plans"),
+    (("the plan", "execution plan", "plan"), "plan"),
+    (("bugs",), "bugs"),
+    (("features",), "features"),
+    (("timeline", "gantt"), "timeline"),
+    (("files", "file tree", "project files"), "files"),
+    (("build state", "builder", "run state", "the state"), "state"),
+)
+
+
+_PRIORITY_PATTERN = (
+    ("p1", "P1"),
+    ("p2", "P2"),
+    ("p3", "P3"),
+    ("p4", "P4"),
+)
+
+_STATUS_PATTERN = (
+    ("in progress", "in_progress"),
+    ("in-progress", "in_progress"),
+    ("todo", "todo"),
+    ("to do", "todo"),
+    ("done", "done"),
+)
+
+
+def _detect_panel_intent(text: str) -> tuple[str, dict[str, str] | None] | None:
+    """Parse user text for a 'show me X' intent → (panel_id, filters) | None.
+
+    Handles phrases like "show me the board", "open the plan", "show me P1
+    tasks", "show me done PRs". Returns ``None`` when the text doesn't look
+    like a panel request, so the agent can handle it.
+    """
+    lower = f" {text.lower().strip()} "
+    trigger = any(
+        phrase in lower
+        for phrase in (
+            "show me",
+            "show the",
+            "open the",
+            "open ",
+            "go to ",
+            "switch to ",
+        )
+    )
+    if not trigger:
+        return None
+    panel_id: str | None = None
+    for keywords, pid in _PANEL_KEYWORDS:
+        if any(kw in lower for kw in keywords):
+            panel_id = pid
+            break
+    if panel_id is None:
+        return None
+    filters: dict[str, str] = {}
+    for needle, value in _PRIORITY_PATTERN:
+        if f" {needle} " in lower or f" {needle}s " in lower:
+            filters["priority"] = value
+            break
+    for needle, value in _STATUS_PATTERN:
+        if f" {needle} " in lower:
+            filters["status"] = value
+            break
+    return (panel_id, filters or None)
+
+
 class Loading(Static):
     """Tiny widget to show loading indicator."""
 
@@ -812,6 +883,15 @@ class Conversation(containers.Vertical):
             if text.startswith("/") and await self.slash_command(text):
                 # Canon has processed the slash command.
                 return
+            # Client-side panel routing: if the user asks to open a panel,
+            # post an OpenPanel event ourselves so the panel opens instantly
+            # regardless of whether the agent chooses to emit one.
+            panel_intent = _detect_panel_intent(text)
+            if panel_intent is not None:
+                panel_id, filters = panel_intent
+                self.post_message(
+                    acp_messages.OpenPanel(panel_id=panel_id, context={"filters": filters} if filters else None)
+                )
             await self.post(UserInput(text))
             self.window.scroll_end(animate=False)
             self._loading = await self.post(Loading("Please wait..."), loading=True)

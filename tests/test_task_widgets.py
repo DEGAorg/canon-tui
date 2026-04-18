@@ -403,3 +403,66 @@ async def test_task_detail_screen_close_button_pops(
         assert not isinstance(app.screen, TaskDetailScreen)
 
 
+
+
+# ---------------------------------------------------------------------------
+# Client-side panel intent detection (chat → panel)
+# ---------------------------------------------------------------------------
+
+
+class TestPanelIntentDetection:
+    """The conversation widget parses 'show me X' phrases client-side."""
+
+    def _detect(self, text: str):
+        from toad.widgets.conversation import _detect_panel_intent
+        return _detect_panel_intent(text)
+
+    def test_no_trigger_returns_none(self) -> None:
+        assert self._detect("just chatting about the weather") is None
+        assert self._detect("board") is None  # no "show me"
+        assert self._detect("help me with testing") is None
+
+    def test_show_me_the_board(self) -> None:
+        assert self._detect("show me the board") == ("board", None)
+        assert self._detect("Show me the Board") == ("board", None)
+
+    def test_show_me_tasks_routes_to_board(self) -> None:
+        assert self._detect("show me tasks") == ("board", None)
+        assert self._detect("show me the tasks") == ("board", None)
+
+    def test_show_me_prs(self) -> None:
+        assert self._detect("show me PRs") == ("prs", None)
+        assert self._detect("show me pull requests") == ("prs", None)
+        assert self._detect("open the PRs") == ("prs", None)
+
+    def test_show_me_plans(self) -> None:
+        assert self._detect("show me plans") == ("plans", None)
+
+    def test_show_me_the_plan_singular(self) -> None:
+        # "the plan" (singular) is the exec plan in Context section
+        assert self._detect("show me the plan") == ("plan", None)
+
+    def test_show_me_timeline_files_state(self) -> None:
+        assert self._detect("show me the timeline") == ("timeline", None)
+        assert self._detect("show me the files") == ("files", None)
+        assert self._detect("show me the state") == ("state", None)
+
+    def test_priority_filter_extracted(self) -> None:
+        pid, filters = self._detect("show me P1 tasks")
+        assert pid == "board"
+        assert filters == {"priority": "P1"}
+
+    def test_status_filter_extracted(self) -> None:
+        pid, filters = self._detect("show me done tasks")
+        assert pid == "board"
+        assert filters == {"status": "done"}
+
+    def test_combined_priority_and_status(self) -> None:
+        pid, filters = self._detect("show me P2 in progress tasks")
+        assert pid == "board"
+        assert filters == {"priority": "P2", "status": "in_progress"}
+
+    def test_open_variants(self) -> None:
+        assert self._detect("open the timeline") == ("timeline", None)
+        assert self._detect("go to the board") == ("board", None)
+        assert self._detect("switch to PRs") == ("prs", None)

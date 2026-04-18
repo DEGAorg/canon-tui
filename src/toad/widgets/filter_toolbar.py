@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Iterable
 
 from textual.app import ComposeResult
-from textual.containers import Horizontal
+from textual.containers import Horizontal, Vertical
 from textual.css.query import NoMatches
 from textual.message import Message
 from textual.widgets import Button, Input, Select
@@ -47,9 +47,17 @@ def filter_tasks(
     milestone_id: str | None = None,
     priority: Priority | None = None,
     title_query: str | None = None,
+    type_filter: str | None = None,
 ) -> list[TaskItem]:
-    """Return the subset of ``tasks`` matching all non-None filters."""
+    """Return the subset of ``tasks`` matching all non-None filters.
+
+    ``type_filter`` matches against labels of the form ``type:<value>``
+    (case-insensitive). Pass ``"plan"`` to return only tasks labelled
+    ``type:plan``. The special value ``"all"`` or ``None`` disables the
+    type filter.
+    """
     query = (title_query or "").strip().lower() or None
+    type_needle = _normalize_type(type_filter)
     result: list[TaskItem] = []
     for task in tasks:
         if status is not None and task.status is not status:
@@ -60,8 +68,24 @@ def filter_tasks(
             continue
         if query is not None and query not in task.title.lower():
             continue
+        if type_needle is not None and not _task_has_type(task, type_needle):
+            continue
         result.append(task)
     return result
+
+
+def _normalize_type(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    lower = raw.strip().lower()
+    if lower in ("", "all"):
+        return None
+    return lower
+
+
+def _task_has_type(task: TaskItem, needle: str) -> bool:
+    prefix = f"type:{needle}"
+    return any(lbl.lower() == prefix for lbl in task.labels)
 
 
 @dataclass(frozen=True)
@@ -72,28 +96,56 @@ class FilterState:
     milestone_id: str | None = None
     priority: Priority | None = None
     title_query: str | None = None
+    type_filter: str | None = None
 
 
-class FilterToolbar(Horizontal):
-    """Horizontal row of filter selects plus a refresh button."""
+class FilterToolbar(Vertical):
+    """Two-row filter toolbar: primary controls on top, type chips below."""
 
     DEFAULT_CSS = """
     FilterToolbar {
         height: auto;
         padding: 0 1;
     }
-    FilterToolbar > Select {
+    FilterToolbar #filter-primary-row {
+        height: auto;
+    }
+    FilterToolbar #filter-primary-row > Select {
         width: 1fr;
         margin-right: 1;
     }
-    FilterToolbar > Input {
+    FilterToolbar #filter-primary-row > Input {
         width: 1fr;
         margin-right: 1;
     }
-    FilterToolbar > Button {
+    FilterToolbar #filter-primary-row > Button {
         width: auto;
     }
+    FilterToolbar #filter-chip-row {
+        height: auto;
+        padding: 0 0 0 0;
+    }
+    FilterToolbar #filter-chip-row > Button {
+        min-width: 10;
+        height: 1;
+        margin-right: 1;
+        border: none;
+        background: $surface;
+        color: $text-muted;
+    }
+    FilterToolbar #filter-chip-row > Button.active {
+        background: $primary 30%;
+        color: $text;
+        text-style: bold;
+    }
     """
+
+    _TYPE_CHIPS: tuple[tuple[str, str], ...] = (
+        ("All types", "all"),
+        ("Plans", "plan"),
+        ("Bugs", "bug"),
+        ("Features", "feature"),
+    )
 
     class FiltersChanged(Message):
         """Emitted when any select value changes."""
@@ -115,29 +167,36 @@ class FilterToolbar(Horizontal):
         self._milestones: list[tuple[str, str]] = list(milestones)
 
     def compose(self) -> ComposeResult:
-        yield Select(
-            options=list(_STATUS_OPTIONS),
-            value=_ANY,
-            allow_blank=False,
-            id="filter-status",
-        )
-        yield Select(
-            options=self._milestone_options(),
-            value=_ANY,
-            allow_blank=False,
-            id="filter-milestone",
-        )
-        yield Select(
-            options=list(_PRIORITY_OPTIONS),
-            value=_ANY,
-            allow_blank=False,
-            id="filter-priority",
-        )
-        yield Input(
-            placeholder="Filter title… (press / to focus)",
-            id="filter-title",
-        )
-        yield Button("Refresh", id="filter-refresh", variant="primary")
+        with Horizontal(id="filter-primary-row"):
+            yield Select(
+                options=list(_STATUS_OPTIONS),
+                value=_ANY,
+                allow_blank=False,
+                id="filter-status",
+            )
+            yield Select(
+                options=self._milestone_options(),
+                value=_ANY,
+                allow_blank=False,
+                id="filter-milestone",
+            )
+            yield Select(
+                options=list(_PRIORITY_OPTIONS),
+                value=_ANY,
+                allow_blank=False,
+                id="filter-priority",
+            )
+            yield Input(
+                placeholder="Filter title… (press / to focus)",
+                id="filter-title",
+            )
+            yield Button("Refresh", id="filter-refresh", variant="primary")
+        with Horizontal(id="filter-chip-row"):
+            for label, value in self._TYPE_CHIPS:
+                btn = Button(label, id=f"chip-type-{value}")
+                if value == "all":
+                    btn.add_class("active")
+                yield btn
 
     def set_milestones(self, milestones: Iterable[tuple[str, str]]) -> None:
         """Replace the milestone dropdown's options while preserving selection.
@@ -174,7 +233,32 @@ class FilterToolbar(Horizontal):
             milestone_id=_to_milestone(self._value("#filter-milestone")),
             priority=_to_priority(self._value("#filter-priority")),
             title_query=self._title_query(),
+            type_filter=self._active_type_chip(),
         )
+
+    def _active_type_chip(self) -> str | None:
+        """Return the value of the currently-active type chip."""
+        for _, value in self._TYPE_CHIPS:
+            try:
+                btn = self.query_one(f"#chip-type-{value}", Button)
+            except NoMatches:
+                continue
+            if "active" in btn.classes:
+                return None if value == "all" else value
+        return None
+
+    def set_active_type(self, value: str) -> None:
+        """Activate the chip matching ``value`` (e.g. 'plan', 'all')."""
+        normalized = value.lower() if value else "all"
+        for _, v in self._TYPE_CHIPS:
+            try:
+                btn = self.query_one(f"#chip-type-{v}", Button)
+            except NoMatches:
+                continue
+            if v == normalized:
+                btn.add_class("active")
+            else:
+                btn.remove_class("active")
 
     def on_select_changed(self, event: Select.Changed) -> None:
         event.stop()
@@ -187,9 +271,16 @@ class FilterToolbar(Horizontal):
         self.post_message(self.FiltersChanged(self.current_state()))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "filter-refresh":
+        btn_id = event.button.id or ""
+        if btn_id == "filter-refresh":
             event.stop()
             self.post_message(self.RefreshRequested())
+            return
+        if btn_id.startswith("chip-type-"):
+            event.stop()
+            value = btn_id.removeprefix("chip-type-")
+            self.set_active_type(value)
+            self.post_message(self.FiltersChanged(self.current_state()))
 
     def _milestone_options(self) -> list[tuple[str, str]]:
         return [("All milestones", _ANY), *self._milestones]

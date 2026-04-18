@@ -14,6 +14,8 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
+from dataclasses import replace
+
 import pytest
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal
@@ -139,6 +141,24 @@ class TestFilterPredicates:
             priority=Priority.P3,
         )
         assert result == []
+
+    def test_filter_by_type_label(
+        self, sample_tasks: list[TaskItem]
+    ) -> None:
+        # Add a type:plan label to the first sample task and type:bug to second
+        tasks = list(sample_tasks)
+        t0 = tasks[0]
+        t1 = tasks[1]
+        tasks[0] = replace(t0, labels=[*t0.labels, "type:plan"])
+        tasks[1] = replace(t1, labels=[*t1.labels, "type:bug"])
+        plans = filter_tasks(tasks, type_filter="plan")
+        assert [t.number for t in plans] == [t0.number]
+        bugs = filter_tasks(tasks, type_filter="bug")
+        assert [t.number for t in bugs] == [t1.number]
+        all_types = filter_tasks(tasks, type_filter="all")
+        assert all_types == tasks
+        none_type = filter_tasks(tasks, type_filter=None)
+        assert none_type == tasks
 
 
 # ---------------------------------------------------------------------------

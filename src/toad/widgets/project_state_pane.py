@@ -113,8 +113,8 @@ PANEL_ROUTES: dict[str, tuple[str, str]] = {
 # Filter schema: panel ID → list of supported filter keys. Used by the
 # agent prompt and documented in the ``canon-panel-routing`` skill.
 PANEL_FILTERS: dict[str, tuple[str, ...]] = {
-    "tasks": ("status", "milestone", "priority", "title"),
-    "board": ("status", "milestone", "priority", "title"),
+    "tasks": ("status", "milestone", "priority", "title", "type"),
+    "board": ("status", "milestone", "priority", "title", "type"),
 }
 
 
@@ -282,7 +282,7 @@ class ProjectStatePane(Vertical):
                 )
             with TabPane("Timeline", id="tab-timeline"):
                 yield GanttTimeline(id="pane-gantt")
-            with TabPane("Tasks", id="tab-tasks"):
+            with TabPane("Board", id="tab-tasks"):
                 with ContentSwitcher(initial="tasks-list-view", id="tasks-switcher"):
                     with Vertical(id="tasks-list-view"):
                         yield FilterToolbar(id="task-filter-toolbar")
@@ -558,6 +558,7 @@ class ProjectStatePane(Vertical):
             milestone_id=self._filter_state.milestone_id,
             priority=self._filter_state.priority,
             title_query=self._filter_state.title_query,
+            type_filter=self._filter_state.type_filter,
         )
         try:
             table = self.query_one("#task-table", TaskTable)
@@ -725,13 +726,26 @@ class ProjectStatePane(Vertical):
         raw_title = filters.get("title")
         if isinstance(raw_title, str):
             title_query = raw_title or None
+        type_filter = state.type_filter
+        raw_type = filters.get("type")
+        if isinstance(raw_type, str):
+            normalized = raw_type.strip().lower()
+            type_filter = None if normalized in ("", "all") else normalized
 
         self._filter_state = FilterState(
             status=status,
             milestone_id=milestone_id,
             priority=priority,
             title_query=title_query,
+            type_filter=type_filter,
         )
+        # Reflect the applied type in the chip UI so the active state matches.
+        try:
+            toolbar = self.query_one("#task-filter-toolbar", FilterToolbar)
+        except NoMatches:
+            pass
+        else:
+            toolbar.set_active_type(type_filter or "all")
         self._apply_filters()
 
     def action_tasks_back(self) -> None:

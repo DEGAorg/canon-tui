@@ -292,12 +292,12 @@ class MainScreen(Screen, can_focus=False):
             await view._render_state(state)
 
     def action_show_planning(self) -> None:
-        """Open pane and show Planning section (GitHub tab)."""
-        self._show_section_tab("section-planning", "tab-github")
+        """Open pane and show Planning section (Board tab)."""
+        self._show_section_tab("section-planning", "tab-tasks")
 
     def action_show_github(self) -> None:
-        """Open pane and show GitHub tab inside Planning."""
-        self._show_section_tab("section-planning", "tab-github")
+        """Open pane and show the Plans tab inside Planning."""
+        self._show_section_tab("section-planning", "tab-gh-plans")
 
     def action_show_timeline(self) -> None:
         """Open pane and show Timeline tab inside Planning."""

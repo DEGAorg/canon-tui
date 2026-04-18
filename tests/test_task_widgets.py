@@ -466,3 +466,26 @@ class TestPanelIntentDetection:
         assert self._detect("open the timeline") == ("timeline", None)
         assert self._detect("go to the board") == ("board", None)
         assert self._detect("switch to PRs") == ("prs", None)
+
+
+class TestCloseIntentDetection:
+    """Close-panel phrasings route to ClosePanel for the right target."""
+
+    def _detect(self, text: str):
+        from toad.widgets.conversation import _detect_close_intent
+        return _detect_close_intent(text)
+
+    def test_no_close_keyword_returns_none(self) -> None:
+        assert self._detect("show me the board") is None
+        assert self._detect("what's next") is None
+
+    def test_close_the_right_panel_hides_everything(self) -> None:
+        assert self._detect("close the right panel") == "project_state"
+        assert self._detect("hide everything") == "project_state"
+        assert self._detect("dismiss the right pane") == "project_state"
+
+    def test_close_specific_panel(self) -> None:
+        assert self._detect("close the board") == "board"
+        assert self._detect("hide the timeline") == "timeline"
+        assert self._detect("close the plan") == "plan"
+        assert self._detect("collapse the files") == "files"

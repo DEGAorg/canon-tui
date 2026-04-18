@@ -229,14 +229,20 @@ class ProjectStatePane(Vertical):
 
     ProjectStatePane #tasks-status {
         height: auto;
-        padding: 0 1;
-        color: $text-muted;
-        text-style: italic;
+        min-height: 2;
+        padding: 1 2;
+        margin: 0 1;
+        background: $primary 20%;
+        color: $text;
+        text-style: bold;
+        border-left: thick $primary;
     }
 
     ProjectStatePane #tasks-status.error {
-        color: $error;
+        background: $error 25%;
+        color: $text;
         text-style: bold;
+        border-left: thick $error;
     }
 
     ProjectStatePane .empty-state {

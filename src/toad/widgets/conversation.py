@@ -223,6 +223,45 @@ def _detect_panel_intent(text: str) -> tuple[str, dict[str, str] | None] | None:
     return (panel_id, filters or None)
 
 
+def _detect_close_intent(text: str) -> str | None:
+    """Parse user text for a 'close the X / hide the X' intent → panel_id.
+
+    Returns the panel_id to close, ``"project_state"`` for "close the
+    right panel" / "close everything", or ``None`` if no close intent.
+    """
+    lower = f" {text.lower().strip()} "
+    trigger = any(
+        phrase in lower
+        for phrase in (
+            "close the",
+            "close ",
+            "hide the",
+            "hide ",
+            "dismiss",
+            "collapse the",
+            "collapse ",
+        )
+    )
+    if not trigger:
+        return None
+    # Whole-pane phrasings → project_state (hides everything).
+    for phrase in (
+        "right panel",
+        "right pane",
+        "project state",
+        "everything",
+        "it all",
+        " all panels",
+    ):
+        if phrase in lower:
+            return "project_state"
+    # Otherwise match the same panel keywords as the open path.
+    for keywords, pid in _PANEL_KEYWORDS:
+        if any(kw in lower for kw in keywords):
+            return pid
+    return None
+
+
 class Loading(Static):
     """Tiny widget to show loading indicator."""
 
@@ -883,15 +922,22 @@ class Conversation(containers.Vertical):
             if text.startswith("/") and await self.slash_command(text):
                 # Canon has processed the slash command.
                 return
-            # Client-side panel routing: if the user asks to open a panel,
-            # post an OpenPanel event ourselves so the panel opens instantly
+            # Client-side panel routing: if the user asks to open or close a
+            # panel, post the event ourselves so the UI reacts instantly
             # regardless of whether the agent chooses to emit one.
-            panel_intent = _detect_panel_intent(text)
-            if panel_intent is not None:
-                panel_id, filters = panel_intent
-                self.post_message(
-                    acp_messages.OpenPanel(panel_id=panel_id, context={"filters": filters} if filters else None)
-                )
+            close_target = _detect_close_intent(text)
+            if close_target is not None:
+                self.post_message(acp_messages.ClosePanel(panel_id=close_target))
+            else:
+                panel_intent = _detect_panel_intent(text)
+                if panel_intent is not None:
+                    panel_id, filters = panel_intent
+                    self.post_message(
+                        acp_messages.OpenPanel(
+                            panel_id=panel_id,
+                            context={"filters": filters} if filters else None,
+                        )
+                    )
             await self.post(UserInput(text))
             self.window.scroll_end(animate=False)
             self._loading = await self.post(Loading("Please wait..."), loading=True)

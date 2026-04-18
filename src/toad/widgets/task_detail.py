@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Container, VerticalScroll
+from textual.message import Message
 from textual.widgets import Button, Collapsible, ContentSwitcher, Markdown, Static
 
 from toad.widgets.github_views.task_provider import TaskDetailData, TaskItem
@@ -54,6 +55,13 @@ class TaskDetail(Container):
         margin-top: 1;
     }
     """
+
+    class DrillDownRequested(Message):
+        """Emitted when the user activates "View comments"."""
+
+        def __init__(self, task: TaskItem) -> None:
+            super().__init__()
+            self.task = task
 
     def __init__(
         self,
@@ -125,11 +133,8 @@ class TaskDetail(Container):
             return
         if self._task_item is None:
             return
-        # Lazy import — avoids a cycle with ``toad.screens``.
-        from toad.screens.task_detail_screen import TaskDetailScreen
-
-        self.app.push_screen(TaskDetailScreen(self._task_item, self._details))
         event.stop()
+        self.post_message(self.DrillDownRequested(self._task_item))
 
 
 def _render_summary(task: TaskItem) -> str:

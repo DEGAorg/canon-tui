@@ -15,8 +15,9 @@ from typing import Iterable
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal
+from textual.css.query import NoMatches
 from textual.message import Message
-from textual.widgets import Button, Select
+from textual.widgets import Button, Input, Select
 
 from toad.widgets.github_views.task_provider import TaskItem
 from toad.widgets.github_views.timeline_provider import ItemStatus, Priority
@@ -45,8 +46,10 @@ def filter_tasks(
     status: ItemStatus | None = None,
     milestone_id: str | None = None,
     priority: Priority | None = None,
+    title_query: str | None = None,
 ) -> list[TaskItem]:
     """Return the subset of ``tasks`` matching all non-None filters."""
+    query = (title_query or "").strip().lower() or None
     result: list[TaskItem] = []
     for task in tasks:
         if status is not None and task.status is not status:
@@ -54,6 +57,8 @@ def filter_tasks(
         if milestone_id is not None and task.milestone_id != milestone_id:
             continue
         if priority is not None and task.priority is not priority:
+            continue
+        if query is not None and query not in task.title.lower():
             continue
         result.append(task)
     return result
@@ -66,6 +71,7 @@ class FilterState:
     status: ItemStatus | None = None
     milestone_id: str | None = None
     priority: Priority | None = None
+    title_query: str | None = None
 
 
 class FilterToolbar(Horizontal):
@@ -77,6 +83,10 @@ class FilterToolbar(Horizontal):
         padding: 0 1;
     }
     FilterToolbar > Select {
+        width: 1fr;
+        margin-right: 1;
+    }
+    FilterToolbar > Input {
         width: 1fr;
         margin-right: 1;
     }
@@ -123,23 +133,39 @@ class FilterToolbar(Horizontal):
             allow_blank=False,
             id="filter-priority",
         )
+        yield Input(
+            placeholder="Filter title… (press / to focus)",
+            id="filter-title",
+        )
         yield Button("Refresh", id="filter-refresh", variant="primary")
 
     def set_milestones(self, milestones: Iterable[tuple[str, str]]) -> None:
-        """Replace the milestone dropdown's options while preserving selection."""
+        """Replace the milestone dropdown's options while preserving selection.
+
+        Suppresses ``Select.Changed`` during the swap so programmatic option
+        resets don't masquerade as user input.
+        """
         self._milestones = list(milestones)
         try:
             select = self.query_one("#filter-milestone", Select)
-        except Exception:
+        except NoMatches:
             return
         current = select.value
-        select.set_options(self._milestone_options())
-        if current != Select.BLANK and current in {
-            v for _, v in self._milestone_options()
-        }:
-            select.value = current
-        else:
-            select.value = _ANY
+        with self.prevent(Select.Changed):
+            select.set_options(self._milestone_options())
+            if current != Select.BLANK and current in {
+                v for _, v in self._milestone_options()
+            }:
+                select.value = current
+            else:
+                select.value = _ANY
+
+    def focus_title_input(self) -> None:
+        """Move focus to the title-query input (called by ``/`` binding)."""
+        try:
+            self.query_one("#filter-title", Input).focus()
+        except NoMatches:
+            return
 
     def current_state(self) -> FilterState:
         """Read the current filter selections."""
@@ -147,9 +173,16 @@ class FilterToolbar(Horizontal):
             status=_to_status(self._value("#filter-status")),
             milestone_id=_to_milestone(self._value("#filter-milestone")),
             priority=_to_priority(self._value("#filter-priority")),
+            title_query=self._title_query(),
         )
 
     def on_select_changed(self, event: Select.Changed) -> None:
+        event.stop()
+        self.post_message(self.FiltersChanged(self.current_state()))
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id != "filter-title":
+            return
         event.stop()
         self.post_message(self.FiltersChanged(self.current_state()))
 
@@ -164,12 +197,20 @@ class FilterToolbar(Horizontal):
     def _value(self, selector: str) -> str | None:
         try:
             select = self.query_one(selector, Select)
-        except Exception:
+        except NoMatches:
             return None
         value = select.value
         if value == Select.BLANK:
             return None
         return str(value)
+
+    def _title_query(self) -> str | None:
+        try:
+            query = self.query_one("#filter-title", Input).value
+        except NoMatches:
+            return None
+        query = query.strip()
+        return query or None
 
 
 def _to_status(raw: str | None) -> ItemStatus | None:

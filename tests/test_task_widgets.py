@@ -191,7 +191,11 @@ async def test_row_selection_swaps_content_switcher(
 
 
 class _DrillDownHarness(App[None]):
-    """App that mounts a TaskDetail pre-populated with a task."""
+    """App that mounts a TaskDetail pre-populated with a task.
+
+    Catches :class:`TaskDetail.DrillDownRequested` and pushes
+    :class:`TaskDetailScreen` — mirrors the wiring in ``ProjectStatePane``.
+    """
 
     def __init__(
         self, task: TaskItem, details: TaskDetailData
@@ -212,6 +216,13 @@ class _DrillDownHarness(App[None]):
             if "comment" in str(btn.label).lower():
                 btn.focus()
                 break
+
+    def on_task_detail_drill_down_requested(
+        self, event: TaskDetail.DrillDownRequested
+    ) -> None:
+        from toad.screens.task_detail_screen import TaskDetailScreen
+
+        self.push_screen(TaskDetailScreen(event.task, self._task_details))
 
 
 @pytest.mark.asyncio

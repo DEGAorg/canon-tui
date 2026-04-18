@@ -10,6 +10,7 @@ from __future__ import annotations
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import VerticalScroll
+from textual.css.query import NoMatches
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Markdown, Static
 
@@ -17,7 +18,13 @@ from toad.widgets.github_views.task_provider import TaskDetailData, TaskItem
 
 
 class TaskDetailScreen(Screen[None]):
-    """Full-screen task detail with Escape-to-pop."""
+    """Full-screen task detail with Escape-to-pop.
+
+    Constructed with just the :class:`TaskItem`; the owning pane calls
+    :meth:`set_details` once the async fetch completes, so the screen
+    always shows the latest body and linked PRs even if the user drilled
+    in before the fetch returned.
+    """
 
     BINDINGS = [
         Binding("escape", "app.pop_screen", "Back"),
@@ -34,6 +41,10 @@ class TaskDetailScreen(Screen[None]):
     TaskDetailScreen .task-screen-meta {
         color: $text-muted;
         padding-bottom: 1;
+    }
+    TaskDetailScreen .task-screen-error {
+        color: $error;
+        text-style: bold;
     }
     """
 
@@ -53,9 +64,34 @@ class TaskDetailScreen(Screen[None]):
                 f"#{self._task_item.number} — {self._task_item.title}",
                 classes="task-screen-title",
             )
-            yield Static(_format_meta(self._task_item, self._details), classes="task-screen-meta")
-            yield Markdown(_body_text(self._details))
+            yield Static(
+                _format_meta(self._task_item, self._details),
+                id="task-screen-meta",
+                classes="task-screen-meta",
+            )
+            yield Markdown(_body_text(self._details), id="task-screen-body-md")
         yield Footer()
+
+    def set_details(self, details: TaskDetailData) -> None:
+        """Swap in fetched body + metadata (called after lazy load)."""
+        self._details = details
+        try:
+            self.query_one("#task-screen-meta", Static).update(
+                _format_meta(self._task_item, details)
+            )
+            self.query_one("#task-screen-body-md", Markdown).update(
+                _body_text(details)
+            )
+        except NoMatches:
+            return
+
+    def set_error(self, message: str) -> None:
+        """Show a fetch error in place of the body."""
+        try:
+            md = self.query_one("#task-screen-body-md", Markdown)
+        except NoMatches:
+            return
+        md.update(f"**Failed to load details:** {message}")
 
 
 def _body_text(details: TaskDetailData | None) -> str:

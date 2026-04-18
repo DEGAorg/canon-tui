@@ -10,10 +10,12 @@ from typing import Any
 import yaml
 from textual import on, work
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.css.query import NoMatches
 from textual.message import Message
 from textual.timer import Timer
-from textual.widgets import Button, DataTable, TabbedContent, TabPane
+from textual.widgets import Button, DataTable, Static, TabbedContent, TabPane
 
 from toad.widgets.builder_view import BuilderView
 from toad.widgets.canon_state import CanonStateWidget
@@ -89,6 +91,11 @@ class ProjectStatePane(Vertical):
     class AllSectionsHidden(Message):
         """Posted when every section is hidden — pane should close."""
 
+    BINDINGS = [
+        Binding("r", "refresh_tasks", "Refresh tasks", show=False),
+        Binding("slash", "focus_task_filter", "Filter tasks", show=False),
+    ]
+
     DEFAULT_CSS = """
     ProjectStatePane {
         display: none;
@@ -137,6 +144,18 @@ class ProjectStatePane(Vertical):
         width: 2fr;
     }
 
+    ProjectStatePane #tasks-status {
+        height: auto;
+        padding: 0 1;
+        color: $text-muted;
+        text-style: italic;
+    }
+
+    ProjectStatePane #tasks-status.error {
+        color: $error;
+        text-style: bold;
+    }
+
     ProjectStatePane .empty-state {
         color: $text-muted;
         text-style: italic;
@@ -181,6 +200,7 @@ class ProjectStatePane(Vertical):
                 yield GanttTimeline(id="pane-gantt")
             with TabPane("Tasks", id="tab-tasks"):
                 yield FilterToolbar(id="task-filter-toolbar")
+                yield Static("", id="tasks-status")
                 with Horizontal(id="tasks-body"):
                     yield TaskTable(id="task-table")
                     yield TaskDetail(id="task-detail")
@@ -205,9 +225,10 @@ class ProjectStatePane(Vertical):
         self._fetch_tasks()
 
     def watch_display(self, visible: bool) -> None:
-        """Stop timer when entire pane is hidden."""
+        """Stop timers when entire pane is hidden."""
         if not visible:
             self._stop_timeline_timer()
+            self._stop_tasks_timer()
 
     def _sync_timeline_timer(self, section_id: str, *, visible: bool) -> None:
         """Start/stop the refresh timer when the GitHub section toggles."""
@@ -362,15 +383,30 @@ class ProjectStatePane(Vertical):
     @work(exclusive=True, exit_on_error=False, group="fetch-tasks")
     async def _fetch_tasks(self) -> None:
         if self._task_provider is None:
+            self._set_tasks_status("No task provider configured.", error=True)
             return
+        self._set_tasks_status("Loading tasks…")
         try:
             tasks = await self._task_provider.fetch_tasks()
         except Exception as exc:
             log.warning("Task fetch failed: %s", exc)
+            self._set_tasks_status(f"Task fetch failed: {exc}", error=True)
             return
         self._all_tasks = tasks
         self._sync_milestone_options(tasks)
         self._apply_filters()
+
+    def _set_tasks_status(self, message: str, *, error: bool = False) -> None:
+        """Update the inline status label above the table."""
+        try:
+            label = self.query_one("#tasks-status", Static)
+        except NoMatches:
+            return
+        label.update(message)
+        if error:
+            label.add_class("error")
+        else:
+            label.remove_class("error")
 
     def _sync_milestone_options(self, tasks: list[TaskItem]) -> None:
         seen: dict[str, str] = {}
@@ -379,7 +415,7 @@ class ProjectStatePane(Vertical):
                 seen[task.milestone_id] = task.milestone_title or task.milestone_id
         try:
             toolbar = self.query_one("#task-filter-toolbar", FilterToolbar)
-        except Exception:
+        except NoMatches:
             return
         toolbar.set_milestones([(title, mid) for mid, title in seen.items()])
 
@@ -389,12 +425,25 @@ class ProjectStatePane(Vertical):
             status=self._filter_state.status,
             milestone_id=self._filter_state.milestone_id,
             priority=self._filter_state.priority,
+            title_query=self._filter_state.title_query,
         )
         try:
             table = self.query_one("#task-table", TaskTable)
-        except Exception:
+        except NoMatches:
             return
         table.set_tasks(filtered)
+        total = len(self._all_tasks)
+        shown = len(filtered)
+        if total == 0:
+            self._set_tasks_status("No tasks loaded.")
+        elif shown == 0:
+            self._set_tasks_status(
+                f"No tasks match filters ({total} total). Press r to refresh."
+            )
+        else:
+            self._set_tasks_status(
+                f"Showing {shown} of {total} tasks."
+            )
 
     @on(FilterToolbar.FiltersChanged)
     def _on_filters_changed(self, event: FilterToolbar.FiltersChanged) -> None:
@@ -408,6 +457,11 @@ class ProjectStatePane(Vertical):
     ) -> None:
         event.stop()
         self._fetch_tasks()
+
+    @on(TaskDetail.DrillDownRequested)
+    def _on_task_drill_down(self, event: TaskDetail.DrillDownRequested) -> None:
+        event.stop()
+        self.open_task_drill_down(event.task)
 
     @on(DataTable.RowSelected, "#task-table")
     def _on_task_row_selected(self, event: DataTable.RowSelected) -> None:
@@ -434,7 +488,7 @@ class ProjectStatePane(Vertical):
             return
         try:
             detail = self.query_one("#task-detail", TaskDetail)
-        except Exception:
+        except NoMatches:
             return
         detail.show_details(details)
 
@@ -448,3 +502,57 @@ class ProjectStatePane(Vertical):
         if self._tasks_refresh_timer is not None:
             self._tasks_refresh_timer.stop()
             self._tasks_refresh_timer = None
+
+    # ------------------------------------------------------------------
+    # Keybindings — active only while the Tasks tab is visible
+    # ------------------------------------------------------------------
+
+    def _is_tasks_tab_active(self) -> bool:
+        try:
+            tc = self.query_one(f"#{SECTION_PLANNING}", TabbedContent)
+        except NoMatches:
+            return False
+        return tc.display and tc.active == "tab-tasks"
+
+    def action_refresh_tasks(self) -> None:
+        if not self._is_tasks_tab_active():
+            return
+        self._fetch_tasks()
+
+    def action_focus_task_filter(self) -> None:
+        if not self._is_tasks_tab_active():
+            return
+        try:
+            toolbar = self.query_one("#task-filter-toolbar", FilterToolbar)
+        except NoMatches:
+            return
+        toolbar.focus_title_input()
+
+    # ------------------------------------------------------------------
+    # Drill-down — live-updating screen with lazy details
+    # ------------------------------------------------------------------
+
+    def open_task_drill_down(self, task: TaskItem) -> None:
+        """Push the full-screen task detail, fetching details into it live."""
+        # Lazy import — avoids cycle with ``toad.screens``.
+        from toad.screens.task_detail_screen import TaskDetailScreen
+
+        screen = TaskDetailScreen(task)
+        self.app.push_screen(screen)
+        self._fetch_task_details_into(task.number, screen)
+
+    @work(exclusive=True, exit_on_error=False, group="fetch-drill-details")
+    async def _fetch_task_details_into(
+        self,
+        number: int,
+        screen: Any,
+    ) -> None:
+        if self._task_provider is None:
+            return
+        try:
+            details = await self._task_provider.fetch_task_details(number)
+        except Exception as exc:
+            log.warning("Drill-down detail fetch failed for #%s: %s", number, exc)
+            screen.set_error(str(exc))
+            return
+        screen.set_details(details)

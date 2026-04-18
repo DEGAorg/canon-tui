@@ -948,10 +948,27 @@ class Conversation(containers.Vertical):
             kept.append(line)
         return "\n".join(kept)
 
+    def _is_canon_quiet(self) -> bool:
+        """Check if agent prose should be suppressed for the active phase."""
+        if not self.app.settings.get("agent.quiet", bool):
+            return False
+        from toad.widgets.canon_state import CanonStateWidget
+        try:
+            canon = self.app.query_one("#canon-state", CanonStateWidget)
+        except NoMatches:
+            return False
+        state = canon.state
+        return (
+            state.status in ("running", "in_progress")
+            and state.phase in ("init", "scaffold", "develop", "run")
+        )
+
     @on(acp_messages.Update)
     async def on_acp_agent_message(self, message: acp_messages.Update):
         message.stop()
         self._agent_thought = None
+        if self._is_canon_quiet():
+            return
         text = self._strip_json_lines(message.text)
         if text.strip():
             await self.post_agent_response(text)
@@ -1022,8 +1039,7 @@ class Conversation(containers.Vertical):
                 tool_id, ToolCall
             )
         except NoMatches:
-            status = tool_call.get("status")
-            if status is not None and status != "failed":
+            if tool_call.get("status") != "failed":
                 return
             await self.post(ToolCall(tool_call, id=message.tool_id), new_block=True)
         else:
@@ -1097,6 +1113,7 @@ class Conversation(containers.Vertical):
             output_byte_limit=message.output_byte_limit,
             id=message.terminal_id,
             minimum_terminal_width=width,
+            quiet=self._is_canon_quiet(),
         )
         self.terminals[message.terminal_id] = terminal
         terminal.display = False

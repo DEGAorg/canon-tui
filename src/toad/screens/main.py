@@ -1,5 +1,6 @@
 from functools import partial
 from pathlib import Path
+from typing import Any
 import random
 
 from textual import on
@@ -372,8 +373,14 @@ class MainScreen(Screen, can_focus=False):
         ``project_state_pane``). Optional ``message.context`` may carry
         ``filters`` — a dict applied to the panel after it opens (see
         the ``canon-panel-routing`` skill).
+
+        Alias IDs like ``plans`` / ``prs`` route to the Board tab with the
+        matching type chip pre-activated.
         """
-        from toad.widgets.project_state_pane import PANEL_ROUTES
+        from toad.widgets.project_state_pane import (
+            PANEL_ROUTES,
+            PANEL_TYPE_PRESETS,
+        )
 
         message.stop()
         panel_id = message.panel_id
@@ -384,12 +391,18 @@ class MainScreen(Screen, can_focus=False):
         if not mapping:
             return
         self._show_section_tab(*mapping)
-        # Apply optional chat-supplied filters to the Board panel.
-        if panel_id in {"tasks", "board"} and message.context:
-            filters = message.context.get("filters")
-            if isinstance(filters, dict):
-                pane = self.query_one("#project_state_pane", ProjectStatePane)
-                pane.apply_task_filters(filters)
+        # Combine explicit filters from context with the alias's type preset.
+        combined_filters: dict[str, Any] = {}
+        preset_type = PANEL_TYPE_PRESETS.get(panel_id)
+        if preset_type:
+            combined_filters["type"] = preset_type
+        if message.context:
+            ctx_filters = message.context.get("filters")
+            if isinstance(ctx_filters, dict):
+                combined_filters.update(ctx_filters)
+        if combined_filters and mapping[1] == "tab-tasks":
+            pane = self.query_one("#project_state_pane", ProjectStatePane)
+            pane.apply_task_filters(combined_filters)
 
     @on(acp_messages.ClosePanel)
     def on_acp_close_panel(self, message: acp_messages.ClosePanel) -> None:

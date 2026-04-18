@@ -28,17 +28,9 @@ from toad.widgets.builder_view import BuilderView
 from toad.widgets.canon_state import CanonStateWidget
 from toad.widgets.filter_toolbar import FilterToolbar, FilterState, filter_tasks
 from toad.widgets.gantt_timeline import GanttTimeline
-from toad.widgets.github_views.fetch import (
-    RepoInfo,
-    check_auth,
-    detect_repo_from_path,
-)
 from toad.widgets.github_views.github_timeline_provider import (
     GitHubTimelineProvider,
 )
-from toad.widgets.github_views.plans import PlansView
-from toad.widgets.github_views.prs import PRsView
-from toad.widgets.github_views.status_overview import StatusOverview
 from toad.widgets.github_views.task_provider import TaskItem, TaskProvider
 from toad.widgets.github_views.timeline_data import build_timeline
 from toad.widgets.plan import Plan
@@ -108,16 +100,29 @@ PANEL_ROUTES: dict[str, tuple[str, str]] = {
     "plan": (SECTION_CONTEXT, "tab-plan"),
     "files": (SECTION_CONTEXT, "tab-files"),
     "planning": (SECTION_PLANNING, "tab-tasks"),
-    "status": (SECTION_PLANNING, "tab-gh-status"),
-    "plans": (SECTION_PLANNING, "tab-gh-plans"),
-    "prs": (SECTION_PLANNING, "tab-gh-prs"),
-    "pull_requests": (SECTION_PLANNING, "tab-gh-prs"),
-    "github": (SECTION_PLANNING, "tab-gh-plans"),
     "timeline": (SECTION_PLANNING, "tab-timeline"),
+    # Board with pre-applied type chip (handled by open_panel routing below).
     "tasks": (SECTION_PLANNING, "tab-tasks"),
     "board": (SECTION_PLANNING, "tab-tasks"),
+    "plans": (SECTION_PLANNING, "tab-tasks"),
+    "prs": (SECTION_PLANNING, "tab-tasks"),
+    "pull_requests": (SECTION_PLANNING, "tab-tasks"),
+    "bugs": (SECTION_PLANNING, "tab-tasks"),
+    "features": (SECTION_PLANNING, "tab-tasks"),
+    "github": (SECTION_PLANNING, "tab-tasks"),
+    "status": (SECTION_PLANNING, "tab-tasks"),
     "state": (SECTION_STATE, "tab-builder"),
     "builder": (SECTION_STATE, "tab-builder"),
+}
+
+
+# For panel aliases that imply a type filter, map the alias to the chip value.
+PANEL_TYPE_PRESETS: dict[str, str] = {
+    "plans": "plan",
+    "prs": "pr",
+    "pull_requests": "pr",
+    "bugs": "bug",
+    "features": "feature",
 }
 
 
@@ -259,9 +264,6 @@ class ProjectStatePane(Vertical):
         self._filter_state = FilterState()
         self._selected_task_id: str | None = None
         self._stack_mode: bool = False
-        self._gh_repo: RepoInfo | None = None
-        self._gh_auth_checked: bool = False
-        self._gh_refresh_timer: Timer | None = None
 
     def compose(self) -> ComposeResult:
         # Toolbar: one button per section + a stack-mode toggle
@@ -287,14 +289,9 @@ class ProjectStatePane(Vertical):
                     id="project_directory_tree",
                 )
 
-        # --- Planning section: Status / Plans / PRs / Timeline / Board ---
+        # --- Planning section: Board / Timeline.
+        # Plans and PRs are now chip filters on the Board, not separate tabs.
         with TabbedContent(id=SECTION_PLANNING, classes="pane-section"):
-            with TabPane("Status", id="tab-gh-status"):
-                yield StatusOverview(id="gh-status-overview")
-            with TabPane("Plans", id="tab-gh-plans"):
-                yield PlansView(id="gh-plans")
-            with TabPane("PRs", id="tab-gh-prs"):
-                yield PRsView(id="gh-prs")
             with TabPane("Timeline", id="tab-timeline"):
                 yield GanttTimeline(id="pane-gantt")
             with TabPane("Board", id="tab-tasks"):
@@ -341,31 +338,19 @@ class ProjectStatePane(Vertical):
         if not visible:
             self._stop_timeline_timer()
             self._stop_tasks_timer()
-            self._stop_github_timer()
 
     def _sync_timeline_timer(self, section_id: str, *, visible: bool) -> None:
-        """Start/stop timers when the Planning section toggles."""
+        """Start/stop the timeline refresh timer when the Planning section toggles."""
         if section_id != SECTION_PLANNING:
             return
         if visible:
             self._fetch_timeline()
-            self._load_github_views()
             if self._refresh_timer is None:
                 self._refresh_timer = self.set_interval(
                     self.REFRESH_INTERVAL, self._fetch_timeline
                 )
-            if self._gh_refresh_timer is None:
-                self._gh_refresh_timer = self.set_interval(
-                    self.REFRESH_INTERVAL, self._load_github_views
-                )
         else:
             self._stop_timeline_timer()
-            self._stop_github_timer()
-
-    def _stop_github_timer(self) -> None:
-        if self._gh_refresh_timer is not None:
-            self._gh_refresh_timer.stop()
-            self._gh_refresh_timer = None
 
     def _stop_timeline_timer(self) -> None:
         if self._refresh_timer is not None:
@@ -525,42 +510,6 @@ class ProjectStatePane(Vertical):
     def refresh_timeline(self) -> None:
         """Re-fetch timeline data. Called via socket controller."""
         self._fetch_timeline()
-
-    # ------------------------------------------------------------------
-    # GitHub views (Status / Plans / PRs) — shared repo detection & load
-    # ------------------------------------------------------------------
-
-    @work(exclusive=True, exit_on_error=False, group="load-github")
-    async def _load_github_views(self) -> None:
-        """Detect repo (once) and populate the three GitHub sub-views."""
-        if self._gh_repo is None:
-            try:
-                self._gh_repo = await detect_repo_from_path(
-                    str(self._project_path)
-                )
-            except Exception as exc:
-                log.warning("Could not detect GitHub repo: %s", exc)
-                return
-        if not self._gh_auth_checked:
-            authed = await check_auth()
-            self._gh_auth_checked = True
-            if not authed:
-                log.warning("gh auth check failed — GitHub views will be empty")
-                return
-        # Fan out to each sub-view; failures inside one shouldn't block others.
-        for widget_id, widget_cls in (
-            ("#gh-status-overview", StatusOverview),
-            ("#gh-plans", PlansView),
-            ("#gh-prs", PRsView),
-        ):
-            try:
-                widget = self.query_one(widget_id, widget_cls)
-            except NoMatches:
-                continue
-            try:
-                await widget.load(self._gh_repo)
-            except Exception as exc:
-                log.warning("Failed to load %s: %s", widget_id, exc)
 
     # ------------------------------------------------------------------
     # Tasks — provider → filter → table → detail

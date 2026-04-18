@@ -364,59 +364,48 @@ class MainScreen(Screen, can_focus=False):
         message.stop()
         self.split_enabled = False
 
-    # Map ACP panel IDs to (section_id, tab_id)
-    _PANEL_MAP: dict[str, tuple[str, str]] = {
-        "context": ("section-context", "tab-plan"),
-        "plan": ("section-context", "tab-plan"),
-        "files": ("section-context", "tab-files"),
-        "planning": ("section-planning", "tab-github"),
-        "github": ("section-planning", "tab-github"),
-        "timeline": ("section-planning", "tab-timeline"),
-        "tasks": ("section-planning", "tab-tasks"),
-        "board": ("section-planning", "tab-tasks"),
-        "state": ("section-state", "tab-builder"),
-        "builder": ("section-state", "tab-builder"),
-    }
-
-    # Map ACP panel IDs to section_id for close
-    _PANEL_SECTION_MAP: dict[str, str] = {
-        "context": "section-context",
-        "plan": "section-context",
-        "files": "section-context",
-        "planning": "section-planning",
-        "github": "section-planning",
-        "timeline": "section-planning",
-        "tasks": "section-planning",
-        "board": "section-planning",
-        "state": "section-state",
-        "builder": "section-state",
-    }
-
     @on(acp_messages.OpenPanel)
     def on_acp_open_panel(self, message: acp_messages.OpenPanel) -> None:
-        """Agent requests opening a panel."""
+        """Agent requests opening a panel.
+
+        The panel ID is looked up in ``PANEL_ROUTES`` (declared in
+        ``project_state_pane``). Optional ``message.context`` may carry
+        ``filters`` — a dict applied to the panel after it opens (see
+        the ``canon-panel-routing`` skill).
+        """
+        from toad.widgets.project_state_pane import PANEL_ROUTES
+
         message.stop()
         panel_id = message.panel_id
         if panel_id == "project_state":
             self.split_enabled = True
             return
-        mapping = self._PANEL_MAP.get(panel_id)
-        if mapping:
-            self._show_section_tab(*mapping)
+        mapping = PANEL_ROUTES.get(panel_id)
+        if not mapping:
+            return
+        self._show_section_tab(*mapping)
+        # Apply optional chat-supplied filters to the Board panel.
+        if panel_id in {"tasks", "board"} and message.context:
+            filters = message.context.get("filters")
+            if isinstance(filters, dict):
+                pane = self.query_one("#project_state_pane", ProjectStatePane)
+                pane.apply_task_filters(filters)
 
     @on(acp_messages.ClosePanel)
     def on_acp_close_panel(self, message: acp_messages.ClosePanel) -> None:
         """Agent requests closing a panel."""
+        from toad.widgets.project_state_pane import PANEL_ROUTES
+
         message.stop()
         panel_id = message.panel_id
         if panel_id == "project_state":
             pane = self.query_one("#project_state_pane", ProjectStatePane)
             pane.hide_all_sections()
             return
-        section_id = self._PANEL_SECTION_MAP.get(panel_id)
-        if section_id:
+        mapping = PANEL_ROUTES.get(panel_id)
+        if mapping:
             pane = self.query_one("#project_state_pane", ProjectStatePane)
-            pane.hide_section(section_id)
+            pane.hide_section(mapping[0])
 
     def action_focus_prompt(self) -> None:
         self.conversation.focus_prompt()

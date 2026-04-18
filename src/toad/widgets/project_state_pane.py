@@ -90,6 +90,34 @@ SECTIONS: list[_SectionDef] = [
 ]
 
 
+# Panel routing registry.
+#
+# Maps an agent-facing panel ID (used in ACP ``open_panel`` messages) to a
+# ``(section_id, tab_id)`` pair. Aliases pointing at the same tab are allowed
+# — the agent prompt can refer to the panel by any of them. To add a new
+# panel: add the tab in ``compose`` and register its alias(es) here.
+PANEL_ROUTES: dict[str, tuple[str, str]] = {
+    "context": (SECTION_CONTEXT, "tab-plan"),
+    "plan": (SECTION_CONTEXT, "tab-plan"),
+    "files": (SECTION_CONTEXT, "tab-files"),
+    "planning": (SECTION_PLANNING, "tab-github"),
+    "github": (SECTION_PLANNING, "tab-github"),
+    "timeline": (SECTION_PLANNING, "tab-timeline"),
+    "tasks": (SECTION_PLANNING, "tab-tasks"),
+    "board": (SECTION_PLANNING, "tab-tasks"),
+    "state": (SECTION_STATE, "tab-builder"),
+    "builder": (SECTION_STATE, "tab-builder"),
+}
+
+
+# Filter schema: panel ID → list of supported filter keys. Used by the
+# agent prompt and documented in the ``canon-panel-routing`` skill.
+PANEL_FILTERS: dict[str, tuple[str, ...]] = {
+    "tasks": ("status", "milestone", "priority", "title"),
+    "board": ("status", "milestone", "priority", "title"),
+}
+
+
 class ProjectStatePane(Vertical):
     """Toggleable right pane with N dynamic sections.
 
@@ -658,6 +686,53 @@ class ProjectStatePane(Vertical):
         except NoMatches:
             return
         toolbar.focus_title_input()
+
+    def apply_task_filters(self, filters: dict[str, Any] | None) -> None:
+        """Apply chat-supplied filters to the Board / Tasks view.
+
+        Recognised keys (all optional): ``status``, ``milestone``, ``priority``,
+        ``title``. Invalid values are ignored. Missing keys keep the existing
+        selection.
+        """
+        if not filters:
+            return
+        from toad.widgets.github_views.timeline_provider import (
+            ItemStatus as _Status,
+            Priority as _Prio,
+        )
+
+        state = self._filter_state
+        status = state.status
+        milestone_id = state.milestone_id
+        priority = state.priority
+        title_query = state.title_query
+
+        raw_status = filters.get("status")
+        if isinstance(raw_status, str):
+            try:
+                status = _Status(raw_status.lower())
+            except ValueError:
+                log.debug("unknown status filter: %s", raw_status)
+        raw_priority = filters.get("priority")
+        if raw_priority is not None:
+            try:
+                priority = _Prio(int(str(raw_priority).lstrip("pP")))
+            except (ValueError, TypeError):
+                log.debug("unknown priority filter: %s", raw_priority)
+        raw_milestone = filters.get("milestone")
+        if isinstance(raw_milestone, str) and raw_milestone:
+            milestone_id = raw_milestone
+        raw_title = filters.get("title")
+        if isinstance(raw_title, str):
+            title_query = raw_title or None
+
+        self._filter_state = FilterState(
+            status=status,
+            milestone_id=milestone_id,
+            priority=priority,
+            title_query=title_query,
+        )
+        self._apply_filters()
 
     def action_tasks_back(self) -> None:
         """Pop the detail view if active, else no-op."""

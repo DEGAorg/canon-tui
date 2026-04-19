@@ -242,6 +242,16 @@ SCHEMA: list[SchemaDict] = [
                 "help": "Show agent's 'thoughts' in the conversation?",
                 "type": "boolean",
             },
+            {
+                "key": "quiet",
+                "title": "Quiet during canon phases",
+                "help": "Suppress agent prose in chat during active canon "
+                "phases (init, scaffold, develop, run). Status updates "
+                "flow through the state pane instead. Strategy phase "
+                "and errors always break through.",
+                "type": "boolean",
+                "default": True,
+            },
             # {
             #     "key": "warn",
             #     "title": "Warning against dangerous commands?",

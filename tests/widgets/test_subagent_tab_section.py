@@ -296,9 +296,13 @@ class TestConversationAgentPair:
             await pilot.pause()
             stub = factory.conversations[0]
             assert stub.is_mounted
+            assert stub in section.walk_children()
             section.close_tab("Strategy")
             await pilot.pause()
-            assert stub.is_mounted is False
+            # Textual never flips ``is_mounted`` back to False; detachment
+            # is observable via the DOM tree + parent pointer.
+            assert stub not in section.walk_children()
+            assert stub.parent is None
             assert section.get_agent("Strategy") is None
 
 

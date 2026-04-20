@@ -10,7 +10,7 @@ stubs or real ACP subprocesses without this widget knowing the details.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable, Protocol
+from typing import Any, Callable
 
 from textual.app import ComposeResult
 from textual.containers import Vertical

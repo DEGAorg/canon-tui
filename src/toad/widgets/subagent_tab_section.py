@@ -80,10 +80,21 @@ class SubagentTabSection(Vertical):
         return resolved
 
     def close_tab(self, name: str) -> None:
-        """Close a subagent tab. No-op if ``name`` is unknown."""
+        """Close a subagent tab. No-op if ``name`` is unknown.
+
+        Fires the agent's ``done_event`` (if present) so any pending
+        ``watch_subagent_completion`` coroutine injects a synthetic
+        completion message into the Conductor's session.
+        """
         if name not in self._agents:
             return
-        del self._agents[name]
+        agent = self._agents.pop(name)
+        done_event = getattr(agent, "done_event", None)
+        if done_event is not None:
+            try:
+                done_event.set()
+            except Exception:
+                pass
         tabs = self.query_one("#subagents-tabs", TabbedContent)
         tabs.remove_pane(self._tab_id(name))
         if not self._agents:

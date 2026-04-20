@@ -462,11 +462,24 @@ class MainScreen(Screen, can_focus=False):
         (guaranteed to contain a string ``objective`` key). Returns the
         resolved unique tab name.
         """
+        import asyncio
+
+        from toad.acp.agent import watch_subagent_completion
+
         self.split_enabled = True
         section = self._get_subagent_section()
         objective_text = str(objective["objective"])
         resolved = section.open_tab(name, objective_text)
         self._show_section_tab(section.SECTION_ID, section._tab_id(resolved))
+
+        subagent = section.get_agent(resolved)
+        conductor = getattr(self.conversation, "agent", None)
+        if subagent is not None and conductor is not None and hasattr(
+            subagent, "done_event"
+        ):
+            asyncio.create_task(
+                watch_subagent_completion(subagent, conductor, resolved)
+            )
         return resolved
 
     async def action_close_subagent_tab(self, name: str) -> None:

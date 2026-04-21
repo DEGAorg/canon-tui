@@ -36,3 +36,6 @@ else
   echo "canon installed (${canon_version}) — run 'canon' from any project directory"
   echo "warning: canon-ctl not found on PATH (optional but recommended)"
 fi
+
+# Sync the outreach extra for dev checkouts (no-op without a project venv).
+uv sync --extra outreach || true

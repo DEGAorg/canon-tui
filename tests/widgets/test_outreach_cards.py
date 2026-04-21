@@ -22,12 +22,12 @@ from toad.widgets.outreach_cards import AccountDot, Histogram, RankedBar, StatLi
 
 
 def _plain(widget: Widget) -> str:
-    """Render ``widget.content`` (set via ``update()``) to plain text."""
-    content = getattr(widget, "content", None)
-    if isinstance(content, Text):
-        return content.plain
+    """Return the current rendered content as plain text."""
+    rendered = getattr(widget, "rendered", None)
+    if isinstance(rendered, Text):
+        return rendered.plain
     console = Console(record=True, width=120, color_system=None)
-    console.print(content)
+    console.print(rendered)
     return console.export_text()
 
 

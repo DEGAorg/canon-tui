@@ -2,8 +2,8 @@
 
 Four small, theme-agnostic ``Static`` subclasses used by the right-pane
 Outreach section. Each accepts plain Python types via ``__init__`` or
-``set_data`` and re-renders a ``rich.text.Text`` into itself — no data
-fetching, no state of their own beyond what the caller supplies.
+``set_data``, recomputes a ``rich.text.Text`` renderable, and refreshes.
+No data fetching, no state beyond what the caller supplies.
 
 The Canon palette is surfaced through semantic style names (``success``,
 ``warning``, ``muted``, ``accent``); widgets translate those names into
@@ -37,11 +37,6 @@ _DOT_IDLE: Final[str] = "○"
 
 
 def _style_for(name: str) -> str:
-    """Resolve a semantic token name to a Rich style string.
-
-    Unknown names are returned unchanged so callers can pass raw Rich
-    styles when a semantic token doesn't fit.
-    """
     return CANON_STYLES.get(name, name)
 
 
@@ -49,20 +44,48 @@ def _format_int(value: int) -> str:
     return f"{value:,}"
 
 
-class StatLine(Static):
-    """Label, total, and an optional stacked horizontal bar.
+class _CardBase(Static):
+    """Shared behaviour: re-render via ``_render()`` and expose ``rendered``.
 
-    Used by the Prospects card to show ``total`` prospects split into
-    coloured segments (messaged / pending). Segments are provided as a
-    tuple of ``(label, value, style_token)`` triples. Values are clamped
-    to ``total``; missing segments render the bar as empty.
+    Subclasses implement ``_render()`` returning a ``rich.text.Text`` and
+    call ``self._refresh_content()`` whenever data changes.
     """
 
     DEFAULT_CSS = """
-    StatLine {
+    _CardBase {
         height: auto;
         padding: 0 1;
     }
+    """
+
+    def __init__(self, **kwargs: object) -> None:
+        super().__init__("", **kwargs)  # type: ignore[arg-type]
+        self._rendered: Text = Text()
+
+    @property
+    def rendered(self) -> Text:
+        """Current rendered content as a rich ``Text`` — used by tests."""
+        return self._rendered
+
+    def _build(self) -> Text:  # pragma: no cover - abstract
+        raise NotImplementedError
+
+    def _refresh_content(self) -> None:
+        self._rendered = self._build()
+        # ``update`` requires a mounted app; if not mounted yet, defer.
+        if self.is_mounted:
+            self.update(self._rendered)
+
+    def render(self) -> Text:
+        return self._rendered
+
+
+class StatLine(_CardBase):
+    """Label, total, and a stacked horizontal bar.
+
+    Used by the Prospects card. Segments are ``(label, value, style_token)``;
+    values are clamped to ``total`` and render in declared order. Empty
+    segments render an all-muted bar.
     """
 
     def __init__(
@@ -73,11 +96,12 @@ class StatLine(Static):
         bar_width: int = 40,
         **kwargs: object,
     ) -> None:
+        super().__init__(**kwargs)
         self._label = label
         self._total = total
         self._segments = segments
         self._bar_width = bar_width
-        super().__init__(self._render(), **kwargs)  # type: ignore[arg-type]
+        self._rendered = self._build()
 
     def set_data(
         self,
@@ -86,9 +110,9 @@ class StatLine(Static):
     ) -> None:
         self._total = total
         self._segments = segments
-        self.update(self._render())
+        self._refresh_content()
 
-    def _render(self) -> Text:
+    def _build(self) -> Text:
         text = Text()
         text.append(self._label, style=_style_for("primary"))
         text.append("  ")
@@ -102,7 +126,6 @@ class StatLine(Static):
             return text
 
         remaining = bar_width
-        drawn_cells = 0
         for _, value, style_token in self._segments:
             if remaining <= 0:
                 break
@@ -112,35 +135,22 @@ class StatLine(Static):
             if cells > 0:
                 text.append(_BAR_FILL * cells, style=_style_for(style_token))
                 remaining -= cells
-                drawn_cells += cells
         if remaining > 0:
             text.append(_BAR_EMPTY * remaining, style=_style_for("muted"))
-            drawn_cells += remaining
 
-        # Caption row: "  845 / 2,044 messaged · 1,199 pending".
         text.append("\n")
-        parts: list[tuple[str, str]] = []
-        for seg_label, value, style_token in self._segments:
-            parts.append((f"{_format_int(value)} {seg_label}", _style_for(style_token)))
-        for i, (chunk, style) in enumerate(parts):
+        for i, (seg_label, value, style_token) in enumerate(self._segments):
             if i > 0:
                 text.append(" · ", style=_style_for("muted"))
-            text.append(chunk, style=style)
+            text.append(f"{_format_int(value)} {seg_label}", style=_style_for(style_token))
         return text
 
 
-class Histogram(Static):
+class Histogram(_CardBase):
     """Single-row 24-slot histogram (hour-of-day sends).
 
-    Accepts any bucket sequence; if the length isn't 24 it is truncated or
-    right-padded with zeros so the row is always exactly 24 cells wide.
-    """
-
-    DEFAULT_CSS = """
-    Histogram {
-        height: auto;
-        padding: 0 1;
-    }
+    Buckets shorter or longer than 24 are padded/truncated silently so the
+    row is always ``SLOTS`` cells wide.
     """
 
     SLOTS: Final[int] = 24
@@ -152,15 +162,16 @@ class Histogram(Static):
         total: int = 0,
         **kwargs: object,
     ) -> None:
+        super().__init__(**kwargs)
         self._label = label
         self._buckets = self._normalize(buckets)
         self._total = total
-        super().__init__(self._render(), **kwargs)  # type: ignore[arg-type]
+        self._rendered = self._build()
 
     def set_data(self, buckets: tuple[int, ...], total: int) -> None:
         self._buckets = self._normalize(buckets)
         self._total = total
-        self.update(self._render())
+        self._refresh_content()
 
     @classmethod
     def _normalize(cls, buckets: tuple[int, ...]) -> tuple[int, ...]:
@@ -170,7 +181,7 @@ class Histogram(Static):
             return buckets[: cls.SLOTS]
         return buckets + (0,) * (cls.SLOTS - len(buckets))
 
-    def _render(self) -> Text:
+    def _build(self) -> Text:
         text = Text()
         text.append(self._label, style=_style_for("primary"))
         text.append("  ")
@@ -190,7 +201,6 @@ class Histogram(Static):
                 idx = min(max(idx, 1), last_idx)
                 text.append(_HISTOGRAM_GLYPHS[idx], style=_style_for("success"))
         text.append("\n")
-        # Hour ticks at 0 / 6 / 12 / 18 / 23.
         axis = ["·"] * self.SLOTS
         for hour in (0, 6, 12, 18, 23):
             axis[hour] = str(hour % 10)
@@ -198,19 +208,10 @@ class Histogram(Static):
         return text
 
 
-class RankedBar(Static):
+class RankedBar(_CardBase):
     """Top-N ranked horizontal bars: ``name | bar | messaged/total``.
 
-    Rows are ``(name, messaged, total)`` triples, sorted internally by
-    ``messaged`` descending and truncated to ``max_rows``. Name column is
-    clipped to ``name_width``; the bar uses ``messaged / total`` proportion.
-    """
-
-    DEFAULT_CSS = """
-    RankedBar {
-        height: auto;
-        padding: 0 1;
-    }
+    Rows are sorted by ``messaged`` descending and clipped to ``max_rows``.
     """
 
     def __init__(
@@ -222,19 +223,19 @@ class RankedBar(Static):
         name_width: int = 18,
         **kwargs: object,
     ) -> None:
-        super().__init__("", **kwargs)  # type: ignore[arg-type]
+        super().__init__(**kwargs)
         self._label = label
         self._rows = rows
         self._max_rows = max_rows
         self._bar_width = bar_width
         self._name_width = name_width
-        self.update(self._render())
+        self._rendered = self._build()
 
     def set_data(self, rows: tuple[tuple[str, int, int], ...]) -> None:
         self._rows = rows
-        self.update(self._render())
+        self._refresh_content()
 
-    def _render(self) -> Text:
+    def _build(self) -> Text:
         text = Text()
         text.append(self._label, style=_style_for("primary"))
         text.append("\n")
@@ -265,13 +266,11 @@ class RankedBar(Static):
         return text
 
 
-class AccountDot(Static):
+class AccountDot(_CardBase):
     """One-line account status: ``● name  12.3/hr  5m ago``.
 
-    Active accounts render a filled dot in the success colour; idle
-    accounts render a hollow dot in muted. ``last_sent`` is a caller-
-    formatted relative string (``5m ago``, ``2h ago``) — the widget does
-    not interpret it, only displays it.
+    ``last_sent`` is a caller-formatted relative string ("5m ago", "2h ago");
+    the widget does not parse timestamps.
     """
 
     DEFAULT_CSS = """
@@ -289,12 +288,12 @@ class AccountDot(Static):
         last_sent: str | None = None,
         **kwargs: object,
     ) -> None:
-        super().__init__("", **kwargs)  # type: ignore[arg-type]
+        super().__init__(**kwargs)
         self._name = name
         self._active = active
         self._sends_per_hour = sends_per_hour
         self._last_sent = last_sent
-        self.update(self._render())
+        self._rendered = self._build()
 
     def set_data(
         self,
@@ -307,9 +306,9 @@ class AccountDot(Static):
         self._active = active
         self._sends_per_hour = sends_per_hour
         self._last_sent = last_sent
-        self.update(self._render())
+        self._refresh_content()
 
-    def _render(self) -> Text:
+    def _build(self) -> Text:
         text = Text()
         dot = _DOT_ACTIVE if self._active else _DOT_IDLE
         dot_style = _style_for("success") if self._active else _style_for("muted")

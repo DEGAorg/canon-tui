@@ -35,6 +35,7 @@ from toad.widgets.github_views.task_provider import TaskItem, TaskProvider
 from toad.widgets.github_views.timeline_data import build_timeline
 from toad.widgets.plan import Plan
 from toad.widgets.project_directory_tree import ProjectDirectoryTree
+from toad.widgets.subagent_tab_section import AgentFactory, SubagentTabSection
 from toad.widgets.task_detail import TaskDetail
 from toad.widgets.task_table import TaskTable
 
@@ -71,6 +72,7 @@ def _read_timeline_config(
 SECTION_CONTEXT = "section-context"
 SECTION_PLANNING = "section-planning"
 SECTION_STATE = "section-state"
+SECTION_SUBAGENTS = SubagentTabSection.SECTION_ID
 
 
 @dataclass
@@ -270,6 +272,7 @@ class ProjectStatePane(Vertical):
         self._filter_state = FilterState()
         self._selected_task_id: str | None = None
         self._stack_mode: bool = False
+        self._subagent_section: SubagentTabSection | None = None
 
     def compose(self) -> ComposeResult:
         # Toolbar: one button per section + a stack-mode toggle
@@ -468,6 +471,30 @@ class ProjectStatePane(Vertical):
     # ------------------------------------------------------------------
     # Public API — tab activation
     # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # Public API — subagents (on-demand section)
+    # ------------------------------------------------------------------
+
+    def ensure_subagent_section(
+        self, agent_factory: AgentFactory
+    ) -> SubagentTabSection:
+        """Return the subagent section, mounting it on first use.
+
+        The section is added lazily so the pane stays untouched when no
+        subagents are active. The factory is captured on first call; later
+        calls reuse the already-mounted section.
+        """
+        if self._subagent_section is None:
+            section = SubagentTabSection(
+                project_path=self._project_path,
+                agent_factory=agent_factory,
+                id=SECTION_SUBAGENTS,
+                classes="pane-section",
+            )
+            self.mount(section)
+            self._subagent_section = section
+        return self._subagent_section
 
     def activate_tab(self, tab_id: str) -> None:
         """Switch to a specific tab by its pane id."""

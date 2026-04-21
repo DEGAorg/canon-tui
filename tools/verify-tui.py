@@ -435,6 +435,91 @@ def verify_live_data_probe(verbose: bool = False) -> bool:
     return len(errors) == 0, errors, results
 
 
+def verify_subagents(verbose: bool = False) -> bool:
+    """Verify SubagentTabSection: mount hidden, open reveals, close hides."""
+    from pathlib import Path
+    from unittest.mock import MagicMock
+
+    from textual.app import App, ComposeResult
+    from textual.widgets import Static, TabbedContent
+
+    from toad.widgets.subagent_tab_section import SubagentTabSection
+
+    errors: list[str] = []
+    results: dict[str, object] = {}
+
+    def _factory(name: str, objective: str):
+        return Static(f"{name}: {objective}"), MagicMock()
+
+    async def _run() -> None:
+        class Harness(App[None]):
+            CSS = "Screen { overflow: hidden; }"
+
+            def compose(self) -> ComposeResult:
+                yield SubagentTabSection(
+                    project_path=Path("/tmp/verify-subagents"),
+                    agent_factory=_factory,
+                    id="section-subagents",
+                )
+
+        app = Harness()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause()
+            section = app.query_one(SubagentTabSection)
+
+            results["initial_display"] = section.display
+            results["initial_empty"] = section.is_empty
+            if section.display:
+                errors.append("section visible on mount (should be hidden)")
+            if not section.is_empty:
+                errors.append("section non-empty on mount")
+
+            resolved = section.open_tab("Alpha", "do a thing")
+            await pilot.pause()
+            results["resolved_first"] = resolved
+            results["after_open_display"] = section.display
+            results["after_open_tabs"] = section.tab_names
+            if resolved != "Alpha":
+                errors.append(
+                    f"first open resolved to {resolved!r}, expected 'Alpha'"
+                )
+            if not section.display:
+                errors.append("section hidden after open_tab")
+
+            dup = section.open_tab("Alpha", "again")
+            await pilot.pause()
+            results["resolved_dup"] = dup
+            if dup != "Alpha 2":
+                errors.append(
+                    f"duplicate name resolved to {dup!r}, expected 'Alpha 2'"
+                )
+
+            tabs = section.query_one("#subagents-tabs", TabbedContent)
+            results["pane_count"] = tabs.tab_count
+            if tabs.tab_count != 2:
+                errors.append(
+                    f"TabbedContent has {tabs.tab_count} panes, expected 2"
+                )
+
+            section.close_tab("Alpha")
+            section.close_tab("Alpha 2")
+            await pilot.pause()
+            results["after_close_display"] = section.display
+            results["after_close_empty"] = section.is_empty
+            if section.display:
+                errors.append("section still visible after closing all tabs")
+            if not section.is_empty:
+                errors.append("section non-empty after closing all tabs")
+
+    asyncio.run(_run())
+
+    if verbose:
+        for key, val in results.items():
+            console.print(f"  {key}: {val}")
+
+    return len(errors) == 0, errors, results
+
+
 def verify_imports(verbose: bool = False) -> bool:
     """Verify all key modules import without error."""
     errors: list[str] = []
@@ -451,6 +536,7 @@ def verify_imports(verbose: bool = False) -> bool:
         "toad.widgets.task_detail",
         "toad.widgets.filter_toolbar",
         "toad.screens.task_detail_screen",
+        "toad.widgets.subagent_tab_section",
     ]
     for mod in modules:
         try:
@@ -466,7 +552,7 @@ def main() -> None:
     parser.add_argument("--verbose", "-v", action="store_true")
     parser.add_argument(
         "--widget",
-        choices=["gantt", "imports", "pane", "tasks", "live", "all"],
+        choices=["gantt", "imports", "pane", "tasks", "subagents", "live", "all"],
         default="all",
     )
     args = parser.parse_args()
@@ -476,6 +562,7 @@ def main() -> None:
         "gantt": verify_gantt,
         "pane": verify_pane_no_default,
         "tasks": verify_tasks,
+        "subagents": verify_subagents,
     }
     # Live probe only runs when explicitly requested — it hits the network.
     if args.widget == "live":

@@ -308,6 +308,14 @@ class MainScreen(Screen, can_focus=False):
         """Open pane and show State section."""
         self._show_section_tab("section-state", "tab-builder")
 
+    def action_show_outreach(self) -> None:
+        """Open pane and show Outreach section.
+
+        No-op when the private rpa_outreach extension is not installed —
+        the section isn't mounted so ``show_section`` silently returns.
+        """
+        self._show_section_tab("section-outreach", "tab-outreach")
+
     def _hide_section(self, section_id: str) -> None:
         """Hide a section by ID."""
         pane = self.query_one("#project_state_pane", ProjectStatePane)
@@ -328,6 +336,10 @@ class MainScreen(Screen, can_focus=False):
     def action_hide_state(self) -> None:
         """Hide the State section."""
         self._hide_section("section-state")
+
+    def action_hide_outreach(self) -> None:
+        """Hide the Outreach section."""
+        self._hide_section("section-outreach")
 
     # ------------------------------------------------------------------
     # Canon auto-show logic

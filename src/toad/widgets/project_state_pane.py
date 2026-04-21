@@ -24,6 +24,8 @@ from textual.widgets import (
     TabPane,
 )
 
+from toad.outreach.protocol import OutreachInfoProvider, OutreachSnapshot
+from toad.outreach.registry import discover as discover_outreach
 from toad.widgets.builder_view import BuilderView
 from toad.widgets.canon_state import CanonStateWidget
 from toad.widgets.filter_toolbar import FilterToolbar, FilterState, filter_tasks
@@ -33,6 +35,7 @@ from toad.widgets.github_views.github_timeline_provider import (
 )
 from toad.widgets.github_views.task_provider import TaskItem, TaskProvider
 from toad.widgets.github_views.timeline_data import build_timeline
+from toad.widgets.outreach_cards import AccountDot, Histogram, RankedBar, StatLine
 from toad.widgets.plan import Plan
 from toad.widgets.project_directory_tree import ProjectDirectoryTree
 from toad.widgets.subagent_tab_section import AgentFactory, SubagentTabSection
@@ -72,7 +75,10 @@ def _read_timeline_config(
 SECTION_CONTEXT = "section-context"
 SECTION_PLANNING = "section-planning"
 SECTION_STATE = "section-state"
+SECTION_OUTREACH = "section-outreach"
 SECTION_SUBAGENTS = SubagentTabSection.SECTION_ID
+
+OUTREACH_REFRESH_INTERVAL = 30
 
 
 @dataclass
@@ -115,6 +121,7 @@ PANEL_ROUTES: dict[str, tuple[str, str]] = {
     "status": (SECTION_PLANNING, "tab-tasks"),
     "state": (SECTION_STATE, "tab-builder"),
     "builder": (SECTION_STATE, "tab-builder"),
+    "outreach": (SECTION_OUTREACH, "tab-outreach"),
 }
 
 
@@ -266,18 +273,23 @@ class ProjectStatePane(Vertical):
         self._project_path = project_path or Path(".").resolve()
         self._refresh_timer: Timer | None = None
         self._tasks_refresh_timer: Timer | None = None
+        self._outreach_timer: Timer | None = None
         self._provider = self._make_provider()
         self._task_provider = self._make_task_provider()
+        self._outreach_provider: OutreachInfoProvider | None = discover_outreach()
         self._all_tasks: list[TaskItem] = []
         self._filter_state = FilterState()
         self._selected_task_id: str | None = None
         self._stack_mode: bool = False
         self._subagent_section: SubagentTabSection | None = None
+        self._sections: list[_SectionDef] = list(SECTIONS)
+        if self._outreach_provider is not None:
+            self._sections.append(_SectionDef(SECTION_OUTREACH, "Outreach"))
 
     def compose(self) -> ComposeResult:
         # Toolbar: one button per section + a stack-mode toggle
         with Horizontal(id="pane-toolbar"):
-            for sec in SECTIONS:
+            for sec in self._sections:
                 yield Button(
                     sec.button_label,
                     id=f"btn-{sec.section_id}",
@@ -333,11 +345,22 @@ class ProjectStatePane(Vertical):
             with TabPane("State", id="tab-builder"):
                 yield BuilderView(id="builder-view")
 
+        # --- Outreach section (conditional) ---
+        if self._outreach_provider is not None:
+            with TabbedContent(id=SECTION_OUTREACH, classes="pane-section"):
+                with TabPane("Outreach", id="tab-outreach"):
+                    with Vertical(id="outreach-container"):
+                        yield StatLine("Prospects", id="outreach-prospects")
+                        yield Histogram("Sends · 24h", id="outreach-sends")
+                        yield RankedBar(
+                            "Hackathons (top 5)", id="outreach-hackathons"
+                        )
+                        yield Vertical(id="outreach-accounts")
+
     def on_mount(self) -> None:
         # All sections start hidden; the user opens one via toolbar / chat.
-        self.query_one(f"#{SECTION_CONTEXT}").display = False
-        self.query_one(f"#{SECTION_PLANNING}").display = False
-        self.query_one(f"#{SECTION_STATE}").display = False
+        for sec in self._sections:
+            self.query_one(f"#{sec.section_id}").display = False
         self._sync_toolbar()
         self._fetch_timeline()
         self._fetch_tasks()
@@ -347,6 +370,7 @@ class ProjectStatePane(Vertical):
         if not visible:
             self._stop_timeline_timer()
             self._stop_tasks_timer()
+            self._stop_outreach_timer()
 
     def _sync_timeline_timer(self, section_id: str, *, visible: bool) -> None:
         """Start/stop the timeline refresh timer when the Planning section toggles."""
@@ -365,6 +389,24 @@ class ProjectStatePane(Vertical):
         if self._refresh_timer is not None:
             self._refresh_timer.stop()
             self._refresh_timer = None
+
+    def _sync_outreach_timer(self, section_id: str, *, visible: bool) -> None:
+        """Start/stop the Outreach refresh timer when its section toggles."""
+        if section_id != SECTION_OUTREACH or self._outreach_provider is None:
+            return
+        if visible:
+            self._fetch_outreach()
+            if self._outreach_timer is None:
+                self._outreach_timer = self.set_interval(
+                    OUTREACH_REFRESH_INTERVAL, self._fetch_outreach
+                )
+        else:
+            self._stop_outreach_timer()
+
+    def _stop_outreach_timer(self) -> None:
+        if self._outreach_timer is not None:
+            self._outreach_timer.stop()
+            self._outreach_timer = None
 
     @on(TabbedContent.TabActivated, f"#{SECTION_PLANNING}")
     def _on_planning_tab_activated(
@@ -403,7 +445,7 @@ class ProjectStatePane(Vertical):
     def _sync_toolbar(self) -> None:
         """Sync all toolbar buttons and fire AllSectionsHidden if needed."""
         any_visible = False
-        for sec in SECTIONS:
+        for sec in self._sections:
             widget = self.query_one(f"#{sec.section_id}")
             btn = self.query_one(f"#btn-{sec.section_id}", Button)
             if widget.display:
@@ -436,24 +478,34 @@ class ProjectStatePane(Vertical):
 
     def show_section(self, section_id: str) -> None:
         """Show a section by its ID."""
-        self.query_one(f"#{section_id}").display = True
+        try:
+            self.query_one(f"#{section_id}").display = True
+        except NoMatches:
+            log.debug("show_section: %s not mounted", section_id)
+            return
         self._sync_toolbar()
         self._sync_timeline_timer(section_id, visible=True)
+        self._sync_outreach_timer(section_id, visible=True)
 
     def show_single_section(self, section_id: str) -> None:
         """Show ``section_id`` and hide all other sections (accordion)."""
-        for sec in SECTIONS:
+        for sec in self._sections:
             visible = sec.section_id == section_id
             widget = self.query_one(f"#{sec.section_id}")
             widget.display = visible
             self._sync_timeline_timer(sec.section_id, visible=visible)
+            self._sync_outreach_timer(sec.section_id, visible=visible)
         self._sync_toolbar()
 
     def hide_section(self, section_id: str) -> None:
         """Hide a section by its ID."""
-        self.query_one(f"#{section_id}").display = False
+        try:
+            self.query_one(f"#{section_id}").display = False
+        except NoMatches:
+            return
         self._sync_toolbar()
         self._sync_timeline_timer(section_id, visible=False)
+        self._sync_outreach_timer(section_id, visible=False)
 
     def toggle_section(self, section_id: str) -> None:
         """Toggle a section's visibility."""
@@ -461,10 +513,11 @@ class ProjectStatePane(Vertical):
         widget.display = not widget.display
         self._sync_toolbar()
         self._sync_timeline_timer(section_id, visible=widget.display)
+        self._sync_outreach_timer(section_id, visible=widget.display)
 
     def hide_all_sections(self) -> None:
         """Hide every section."""
-        for sec in SECTIONS:
+        for sec in self._sections:
             self.query_one(f"#{sec.section_id}").display = False
         self._sync_toolbar()
 
@@ -543,6 +596,69 @@ class ProjectStatePane(Vertical):
     def refresh_timeline(self) -> None:
         """Re-fetch timeline data. Called via socket controller."""
         self._fetch_timeline()
+
+    # ------------------------------------------------------------------
+    # Outreach fetch — async provider pipeline
+    # ------------------------------------------------------------------
+
+    @work(exclusive=True, exit_on_error=False, group="fetch-outreach")
+    async def _fetch_outreach(self) -> None:
+        """Fetch an outreach snapshot and render it into the cards."""
+        if self._outreach_provider is None:
+            return
+        try:
+            if not await self._outreach_provider.available():
+                return
+            snapshot = await self._outreach_provider.snapshot()
+        except Exception as exc:
+            log.warning("Outreach fetch failed: %s", exc)
+            return
+        self._render_outreach(snapshot)
+
+    def _render_outreach(self, snapshot: OutreachSnapshot) -> None:
+        """Push a snapshot into the 4 outreach cards."""
+        try:
+            prospects = self.query_one("#outreach-prospects", StatLine)
+            sends = self.query_one("#outreach-sends", Histogram)
+            hackathons = self.query_one("#outreach-hackathons", RankedBar)
+            accounts_box = self.query_one("#outreach-accounts", Vertical)
+        except NoMatches:
+            return
+
+        p = snapshot.prospects
+        prospects.set_data(
+            p.total,
+            (
+                ("messaged", p.messaged, "success"),
+                ("pending", p.pending, "warning"),
+            ),
+        )
+
+        if snapshot.sends is None:
+            sends.display = False
+        else:
+            sends.display = True
+            sends.set_data(tuple(snapshot.sends.hourly), snapshot.sends.total_24h)
+
+        hackathons.set_data(
+            tuple((h.name, h.messaged, h.total) for h in snapshot.hackathons)
+        )
+
+        if snapshot.accounts is None:
+            accounts_box.display = False
+        else:
+            accounts_box.display = True
+            for child in list(accounts_box.children):
+                child.remove()
+            for acct in snapshot.accounts:
+                accounts_box.mount(
+                    AccountDot(
+                        name=acct.name,
+                        active=acct.online,
+                        sends_per_hour=acct.sends_per_hour,
+                        last_sent=acct.last_sent_relative,
+                    )
+                )
 
     # ------------------------------------------------------------------
     # Tasks — provider → filter → table → detail

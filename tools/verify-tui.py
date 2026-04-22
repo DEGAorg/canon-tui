@@ -520,6 +520,129 @@ def verify_subagents(verbose: bool = False) -> bool:
     return len(errors) == 0, errors, results
 
 
+def verify_outreach(verbose: bool = False) -> bool:
+    """Verify the Outreach card widgets mount and render.
+
+    Uses synthetic data — does not require the private ``rpa_outreach``
+    extension or a live DB. Confirms layout / rendering parity with the
+    rest of the pane.
+    """
+    from textual.app import App, ComposeResult
+    from textual.containers import Vertical
+
+    from toad.widgets.outreach_cards import (
+        AccountDot,
+        Histogram,
+        RankedBar,
+        StatLine,
+    )
+
+    errors: list[str] = []
+    results: dict[str, object] = {}
+
+    class OutreachHarness(App[None]):
+        CSS = "Screen { overflow: hidden; }"
+
+        def compose(self) -> ComposeResult:
+            with Vertical(id="outreach-container"):
+                yield StatLine(
+                    "Prospects",
+                    total=2044,
+                    segments=(
+                        ("messaged", 845, "success"),
+                        ("pending", 1199, "warning"),
+                    ),
+                    id="stat",
+                )
+                yield Histogram(
+                    "Sends · 24h",
+                    buckets=tuple(range(24)),
+                    total=276,
+                    id="hist",
+                )
+                yield RankedBar(
+                    "Hackathons",
+                    rows=(
+                        ("Alpha Hack", 12, 50),
+                        ("Beta Hack", 40, 80),
+                        ("Gamma Hack", 3, 9),
+                    ),
+                    id="rank",
+                )
+                yield AccountDot(
+                    name="acct-1",
+                    active=True,
+                    sends_per_hour=12.3,
+                    last_sent="5m ago",
+                    id="dot",
+                )
+
+    async def _run() -> None:
+        app = OutreachHarness()
+        async with app.run_test(size=(80, 20)) as pilot:
+            await pilot.pause()
+            stat = app.query_one("#stat", StatLine)
+            hist = app.query_one("#hist", Histogram)
+            rank = app.query_one("#rank", RankedBar)
+            dot = app.query_one("#dot", AccountDot)
+
+            results["stat_text"] = stat.rendered.plain[:40]
+            results["hist_text"] = hist.rendered.plain[:40]
+            results["rank_text"] = rank.rendered.plain[:40]
+            results["dot_text"] = dot.rendered.plain
+
+            if "Prospects" not in stat.rendered.plain:
+                errors.append("StatLine did not render 'Prospects' label")
+            if "2,044" not in stat.rendered.plain:
+                errors.append("StatLine did not render total 2,044")
+            if "Sends" not in hist.rendered.plain:
+                errors.append("Histogram did not render 'Sends' label")
+            if "Hackathons" not in rank.rendered.plain:
+                errors.append("RankedBar did not render 'Hackathons' label")
+            if "acct-1" not in dot.rendered.plain:
+                errors.append("AccountDot did not render account name")
+
+    asyncio.run(_run())
+
+    # Verify discover() returns None when the extension cannot be imported.
+    # Cannot gate on env var alone anymore — provider resolves DSN from its
+    # own shipped .env too, so "env unset" is not a guaranteed None.
+    import sys
+
+    from toad.outreach.registry import discover
+
+    ext_module = "toad.extensions.rpa_outreach"
+    saved_module = sys.modules.pop(ext_module, None)
+    saved_rpa = sys.modules.pop(f"{ext_module}.rpa_outreach", None)
+    real_import = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __builtins__["__import__"]  # type: ignore[index]
+
+    def _block_import(name: str, *a: object, **kw: object) -> object:
+        if name == ext_module or name.startswith(ext_module + "."):
+            raise ImportError(f"simulated missing submodule: {name}")
+        return real_import(name, *a, **kw)  # type: ignore[misc]
+
+    import builtins
+
+    builtins.__import__ = _block_import  # type: ignore[assignment]
+    try:
+        provider = discover()
+        results["discover_none_when_module_absent"] = provider is None
+        if provider is not None:
+            errors.append("discover() returned non-None with submodule blocked")
+    finally:
+        builtins.__import__ = real_import  # type: ignore[assignment]
+        if saved_module is not None:
+            sys.modules[ext_module] = saved_module
+        if saved_rpa is not None:
+            sys.modules[f"{ext_module}.rpa_outreach"] = saved_rpa
+
+    if verbose:
+        for key, val in results.items():
+            console.print(f"  {key}: {val}")
+
+    return len(errors) == 0, errors, results
+
+
 def verify_imports(verbose: bool = False) -> bool:
     """Verify all key modules import without error."""
     errors: list[str] = []
@@ -537,6 +660,9 @@ def verify_imports(verbose: bool = False) -> bool:
         "toad.widgets.filter_toolbar",
         "toad.screens.task_detail_screen",
         "toad.widgets.subagent_tab_section",
+        "toad.outreach.protocol",
+        "toad.outreach.registry",
+        "toad.widgets.outreach_cards",
     ]
     for mod in modules:
         try:
@@ -552,7 +678,16 @@ def main() -> None:
     parser.add_argument("--verbose", "-v", action="store_true")
     parser.add_argument(
         "--widget",
-        choices=["gantt", "imports", "pane", "tasks", "subagents", "live", "all"],
+        choices=[
+            "gantt",
+            "imports",
+            "pane",
+            "tasks",
+            "subagents",
+            "outreach",
+            "live",
+            "all",
+        ],
         default="all",
     )
     args = parser.parse_args()
@@ -563,6 +698,7 @@ def main() -> None:
         "pane": verify_pane_no_default,
         "tasks": verify_tasks,
         "subagents": verify_subagents,
+        "outreach": verify_outreach,
     }
     # Live probe only runs when explicitly requested — it hits the network.
     if args.widget == "live":

@@ -604,20 +604,37 @@ def verify_outreach(verbose: bool = False) -> bool:
 
     asyncio.run(_run())
 
-    # Also verify discover() returns None in a clean env (no extension installed).
-    import os
+    # Verify discover() returns None when the extension cannot be imported.
+    # Cannot gate on env var alone anymore — provider resolves DSN from its
+    # own shipped .env too, so "env unset" is not a guaranteed None.
+    import sys
 
     from toad.outreach.registry import discover
 
-    prev = os.environ.pop("CANON_RPA_OUTREACH_DATABASE_URL", None)
+    ext_module = "toad.extensions.rpa_outreach"
+    saved_module = sys.modules.pop(ext_module, None)
+    saved_rpa = sys.modules.pop(f"{ext_module}.rpa_outreach", None)
+    real_import = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __builtins__["__import__"]  # type: ignore[index]
+
+    def _block_import(name: str, *a: object, **kw: object) -> object:
+        if name == ext_module or name.startswith(ext_module + "."):
+            raise ImportError(f"simulated missing submodule: {name}")
+        return real_import(name, *a, **kw)  # type: ignore[misc]
+
+    import builtins
+
+    builtins.__import__ = _block_import  # type: ignore[assignment]
     try:
         provider = discover()
-        results["discover_none_when_no_env"] = provider is None
+        results["discover_none_when_module_absent"] = provider is None
         if provider is not None:
-            errors.append("discover() returned non-None with env var unset")
+            errors.append("discover() returned non-None with submodule blocked")
     finally:
-        if prev is not None:
-            os.environ["CANON_RPA_OUTREACH_DATABASE_URL"] = prev
+        builtins.__import__ = real_import  # type: ignore[assignment]
+        if saved_module is not None:
+            sys.modules[ext_module] = saved_module
+        if saved_rpa is not None:
+            sys.modules[f"{ext_module}.rpa_outreach"] = saved_rpa
 
     if verbose:
         for key, val in results.items():

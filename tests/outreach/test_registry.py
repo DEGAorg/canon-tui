@@ -3,7 +3,8 @@
 `discover()` returns an `OutreachInfoProvider` iff:
   1. `toad.extensions.rpa_outreach` can be imported AND exposes a `provider`
      attribute that satisfies the `OutreachInfoProvider` protocol, AND
-  2. `CANON_RPA_OUTREACH_DATABASE_URL` is set in the environment.
+  2. The provider reports a non-None `dsn` (the provider itself decides
+     how to resolve it — env var, shipped `.env`, etc.).
 
 Otherwise `discover()` returns None (it must swallow `ImportError`).
 """
@@ -22,13 +23,15 @@ from toad.outreach.protocol import (
 )
 from toad.outreach.registry import discover
 
-ENV_VAR = "CANON_RPA_OUTREACH_DATABASE_URL"
 EXT_MODULE = "toad.extensions.rpa_outreach"
 
 
 class _FakeProvider:
+    def __init__(self, dsn: str | None = "postgres://example/db") -> None:
+        self.dsn = dsn
+
     async def available(self) -> bool:
-        return True
+        return self.dsn is not None
 
     async def snapshot(self) -> OutreachSnapshot:
         return OutreachSnapshot(
@@ -66,12 +69,11 @@ def _block_extension_import(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("builtins.__import__", fake_import)
 
 
-def test_discover_returns_provider_when_module_and_env_present(
+def test_discover_returns_provider_when_module_and_dsn_present(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     provider = _FakeProvider()
     _install_fake_extension(monkeypatch, provider)
-    monkeypatch.setenv(ENV_VAR, "postgres://example/db")
 
     got = discover()
 
@@ -79,27 +81,16 @@ def test_discover_returns_provider_when_module_and_env_present(
     assert isinstance(got, OutreachInfoProvider)
 
 
-def test_discover_returns_none_when_env_missing(
+def test_discover_returns_none_when_provider_has_no_dsn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _install_fake_extension(monkeypatch, _FakeProvider())
-    monkeypatch.delenv(ENV_VAR, raising=False)
-
-    assert discover() is None
-
-
-def test_discover_returns_none_when_env_empty(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _install_fake_extension(monkeypatch, _FakeProvider())
-    monkeypatch.setenv(ENV_VAR, "")
+    _install_fake_extension(monkeypatch, _FakeProvider(dsn=None))
 
     assert discover() is None
 
 
 def test_discover_swallows_import_error(monkeypatch: pytest.MonkeyPatch) -> None:
     _block_extension_import(monkeypatch)
-    monkeypatch.setenv(ENV_VAR, "postgres://example/db")
 
     assert discover() is None
 
@@ -116,7 +107,6 @@ def test_discover_returns_none_when_provider_attr_missing(
     fake = types.ModuleType(EXT_MODULE)
     # no `provider` attribute
     monkeypatch.setitem(sys.modules, EXT_MODULE, fake)
-    monkeypatch.setenv(ENV_VAR, "postgres://example/db")
 
     assert discover() is None
 
@@ -128,6 +118,5 @@ def test_discover_returns_none_when_attr_not_a_provider(
         pass
 
     _install_fake_extension(monkeypatch, NotAProvider())
-    monkeypatch.setenv(ENV_VAR, "postgres://example/db")
 
     assert discover() is None

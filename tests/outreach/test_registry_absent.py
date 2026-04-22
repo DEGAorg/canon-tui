@@ -1,14 +1,16 @@
 """Negative tests: `discover()` returns None when the Outreach extension is absent.
 
-Covers the two independent "absent" axes that disable the Outreach panel:
+The panel is off when EITHER axis fails:
 
 1. The extension directory/submodule is empty — `toad.extensions.rpa_outreach`
    cannot be imported (simulated by making `__import__` raise `ImportError`
    and removing any cached module entry).
-2. The `CANON_RPA_OUTREACH_DATABASE_URL` environment variable is unset.
+2. The provider exists but has no DSN available (neither env var nor
+   shipped `.env`). See `test_registry.py::test_discover_returns_none_when_provider_has_no_dsn`
+   for that axis.
 
-Each axis is asserted independently, and together (both absent) — in all
-cases `discover()` must return None without raising.
+Each axis is asserted independently — in all cases `discover()` must
+return None without raising.
 """
 
 from __future__ import annotations
@@ -56,13 +58,6 @@ def test_discover_none_when_env_unset_and_extension_dir_empty(
 ) -> None:
     """Both axes absent: classic public-repo default — must not raise."""
     _simulate_empty_extension_dir(monkeypatch)
-    monkeypatch.delenv(ENV_VAR, raising=False)
-
-    assert discover() is None
-
-
-def test_discover_none_when_env_unset(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Env var unset shortcuts to None even if the module might be importable."""
     monkeypatch.delenv(ENV_VAR, raising=False)
 
     assert discover() is None

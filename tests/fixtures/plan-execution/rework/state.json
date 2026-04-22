@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "plan": "sample-plan",
+  "issueNumber": 44,
+  "maxParallelWorkers": 4,
+  "mode": "foreground",
+  "items": [
+    {
+      "id": 1,
+      "description": "Reworked item",
+      "deps": [],
+      "status": "done",
+      "workerPid": 1003,
+      "logPath": "logs/worker-1.log",
+      "worktree": ".orchestrator/worktrees/sample-plan",
+      "iteration": 2,
+      "maxIterations": 3,
+      "lastResult": "SHIP",
+      "reviewStatus": "SHIP"
+    }
+  ]
+}

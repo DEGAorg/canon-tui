@@ -1,0 +1,10 @@
+{"ts":"2026-04-22T14:00:00.000Z","evt":"plan_start","slug":"sample-plan","total_items":1,"max_parallel_workers":2,"issue":46,"mode":"background"}
+{"ts":"2026-04-22T14:00:00.100Z","evt":"item_spawn","slug":"sample-plan","item":1,"iteration":1,"pid":1001}
+{"ts":"2026-04-22T14:00:00.200Z","evt":"item_status","slug":"sample-plan","item":1,"iteration":1,"from":"queued","to":"ready"}
+{"ts":"2026-04-22T14:00:00.300Z","evt":"item_status","slug":"sample-plan","item":1,"iteration":1,"from":"ready","to":"running"}
+{"ts":"2026-04-22T14:00:01.000Z","evt":"item_status","slug":"sample-plan","item":1,"iteration":1,"from":"running","to":"verifying"}
+{"ts":"2026-04-22T14:00:01.100Z","evt":"review_start","slug":"sample-plan","item":1,"iteration":1}
+{"ts":"2026-04-22T14:00:01.800Z","evt":"review_end","slug":"sample-plan","item":1,"iteration":1,"verdict":"SHIP","duration_ms":700}
+{"ts":"2026-04-22T14:00:01.900Z","evt":"item_status","slug":"sample-plan","item":1,"iteration":1,"from":"verifying","to":"done","review_status":"SHIP"}
+{"ts":"2026-04-22T14:00:02.000Z","evt":"plan_end","slug":"sample-plan","status":"completed","total_items":1,"done_items":1,"failed_items":0,"duration_ms":2000}
+{"ts":"2026-04-22T14:00:02.500Z","evt":"plan_end","slug":"sample-plan","status":"completed","total_items":1,"done_items":1,"failed_items":0,"duration_ms":2500}

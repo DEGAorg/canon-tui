@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "plan": "sample-plan",
+  "issueNumber": 45,
+  "maxParallelWorkers": 4,
+  "mode": "foreground",
+  "items": [
+    {
+      "id": 1,
+      "description": "Truncation victim",
+      "deps": [],
+      "status": "running",
+      "workerPid": 1001,
+      "logPath": "logs/worker-1.log",
+      "worktree": ".orchestrator/worktrees/sample-plan",
+      "iteration": 1,
+      "maxIterations": 3,
+      "lastResult": null,
+      "reviewStatus": null
+    }
+  ]
+}

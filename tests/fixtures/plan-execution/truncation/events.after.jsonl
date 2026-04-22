@@ -1,0 +1,3 @@
+{"ts":"2026-04-22T13:10:00.000Z","evt":"plan_start","slug":"sample-plan","total_items":1,"max_parallel_workers":4}
+{"ts":"2026-04-22T13:10:00.100Z","evt":"item_spawn","slug":"sample-plan","item":1,"iteration":1}
+{"ts":"2026-04-22T13:10:00.200Z","evt":"item_status","slug":"sample-plan","item":1,"iteration":1,"from":"queued","to":"ready"}

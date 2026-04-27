@@ -125,6 +125,21 @@ PANEL_ROUTES: dict[str, tuple[str, str]] = {
     "state": (SECTION_STATE, "tab-builder"),
     "builder": (SECTION_STATE, "tab-builder"),
     "outreach": (SECTION_OUTREACH, "tab-outreach"),
+    # Plan execution: dynamic tab-per-slug, so the tab id is the
+    # section's stable empty-pane id. The pane handler treats this
+    # as "show the section, surface the running-plans list".
+    "plan_execution": (
+        PlanExecutionSection.SECTION_ID,
+        "plan-exec-empty",
+    ),
+    "plan_run": (
+        PlanExecutionSection.SECTION_ID,
+        "plan-exec-empty",
+    ),
+    "running_plans": (
+        PlanExecutionSection.SECTION_ID,
+        "plan-exec-empty",
+    ),
 }
 
 
@@ -492,6 +507,12 @@ class ProjectStatePane(Vertical):
 
     def show_section(self, section_id: str) -> None:
         """Show a section by its ID."""
+        # The plan execution section is mounted lazily on first use —
+        # ensure it exists before trying to query it (e.g. for the
+        # ``plan_execution`` panel route, fired before any plan tab
+        # has been opened).
+        if section_id == PlanExecutionSection.SECTION_ID:
+            self._ensure_plan_exec_section()
         try:
             self.query_one(f"#{section_id}").display = True
         except NoMatches:
@@ -607,21 +628,21 @@ class ProjectStatePane(Vertical):
         self._sync_toolbar()
 
     def _replay_pending_plans(self, section: PlanExecutionSection) -> None:
-        """Open tabs for any plans already known to the orchestrator widget."""
+        """Push the current plan snapshot into the section's running list.
+
+        Plans already running when canon launched are pre-existing — they
+        are NOT auto-opened. The user can pick them from the running-plans
+        list (rendered as the section's empty state) or call the
+        ``plan_execution`` panel route. This keeps canon launch silent
+        when reattaching to a project with live orch state.
+        """
         try:
             widget = self.query_one(
                 "#orchestrator-state", OrchestratorStateWidget
             )
         except NoMatches:
             return
-        plans = list(widget.plans)
-        if not plans:
-            return
-        self.display = True
-        self.show_section(PlanExecutionSection.SECTION_ID)
-        for plan in plans:
-            if plan.slug:
-                section.open_tab(plan.slug)
+        section.set_plan_summaries(list(widget.plans))
 
     def _ensure_plan_exec_section(self) -> PlanExecutionSection:
         if self._plan_exec_section is None:
@@ -639,20 +660,64 @@ class ProjectStatePane(Vertical):
     def _on_plans_updated(
         self, event: OrchestratorStateWidget.PlansUpdated
     ) -> None:
-        """Auto-open a tab for every plan slug in ``master.json``.
+        """Auto-open tabs only for plans started during this canon session.
 
-        Duplicate slugs are deduped by :meth:`PlanExecutionSection.open_tab`.
-        When no model factory is registered the section is a silent no-op.
+        Pre-existing plans (those already in ``master.json`` when canon
+        launched) and completed plans are skipped — they are reachable
+        via the explicit ``plan_execution`` panel route. Without this
+        filter every old plan in master.json would mount a tab.
+
+        The section itself is mounted regardless so the running-plans
+        list (rendered as the section's empty state) stays current.
         """
         event.stop()
+        section = self._ensure_plan_exec_section()
+        section.set_plan_summaries(event.plans)
         if not event.plans:
             return
-        section = self._ensure_plan_exec_section()
+        baseline = event.baseline_slugs
+        new_active = [
+            p for p in event.plans
+            if p.slug
+            and p.slug not in baseline
+            and p.status not in ("completed", "crashed")
+        ]
+        if not new_active:
+            return
+        # A plan was started while canon was running — reveal the pane
+        # and mount its tab.
         self.display = True
         self.show_section(PlanExecutionSection.SECTION_ID)
-        for plan in event.plans:
-            if plan.slug:
-                section.open_tab(plan.slug)
+        for plan in new_active:
+            section.open_tab(plan.slug)
+
+    @on(PlanExecutionSection.PlanCrashRequested)
+    def _on_plan_crash_requested(
+        self, event: PlanExecutionSection.PlanCrashRequested
+    ) -> None:
+        """Forward zombie cleanup → master.json mutation."""
+        event.stop()
+        try:
+            widget = self.query_one(
+                "#orchestrator-state", OrchestratorStateWidget
+            )
+        except NoMatches:
+            return
+        widget.mark_plan_crashed(event.slug)
+
+    @on(PlanExecutionSection.PlanRemoveRequested)
+    def _on_plan_remove_requested(
+        self, event: PlanExecutionSection.PlanRemoveRequested
+    ) -> None:
+        """Forward remove-from-list → master.json mutation."""
+        event.stop()
+        try:
+            widget = self.query_one(
+                "#orchestrator-state", OrchestratorStateWidget
+            )
+        except NoMatches:
+            return
+        widget.remove_plan_from_list(event.slug)
 
     def activate_tab(self, tab_id: str) -> None:
         """Switch to a specific tab by its pane id."""

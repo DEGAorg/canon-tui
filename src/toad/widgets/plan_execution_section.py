@@ -16,13 +16,16 @@ lands without crashing on live ``master.json`` updates.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Any
 
+from textual import on
 from textual.app import ComposeResult
-from textual.containers import Vertical
-from textual.widgets import Static, TabbedContent, TabPane
+from textual.containers import Horizontal, Vertical
+from textual.message import Message
+from textual.widgets import Button, Static, TabbedContent, TabPane
 
+from toad.widgets.orchestrator_state import PlanSummary, is_stale
 from toad.widgets.plan_execution_tab import PlanExecutionModel, PlanExecutionTab
 
 
@@ -36,9 +39,12 @@ __all__ = [
 EMPTY_PANE_ID = "plan-exec-empty"
 _EMPTY_PANE_TITLE = "Plans"
 _EMPTY_PLACEHOLDER_TEXT = (
-    "No plan execution running.\n\n"
+    "No plan running.\n\n"
     "Start one with:  bash ~/.claude/scripts/orch-run.sh <slug>"
 )
+_BTN_OPEN_PREFIX = "plan-open-"
+_BTN_CRASH_PREFIX = "plan-crash-"
+_BTN_REMOVE_PREFIX = "plan-remove-"
 
 
 log = logging.getLogger(__name__)
@@ -57,6 +63,20 @@ class PlanExecutionSection(Vertical):
 
     SECTION_ID = "section-plan-execution"
 
+    class PlanCrashRequested(Message):
+        """User clicked Mark-crashed on the running-plans list."""
+
+        def __init__(self, slug: str) -> None:
+            super().__init__()
+            self.slug = slug
+
+    class PlanRemoveRequested(Message):
+        """User clicked Remove-from-list on the running-plans list."""
+
+        def __init__(self, slug: str) -> None:
+            super().__init__()
+            self.slug = slug
+
     DEFAULT_CSS = """
     PlanExecutionSection {
         display: none;
@@ -68,8 +88,41 @@ class PlanExecutionSection(Vertical):
     }
 
     PlanExecutionSection .empty-state {
-        padding: 2 4;
+        padding: 1 2;
         color: $text-muted;
+    }
+
+    PlanExecutionSection .plan-list-header {
+        padding: 1 2 0 2;
+        color: $text;
+        text-style: bold;
+    }
+
+    PlanExecutionSection .plan-list-row {
+        height: 1;
+        padding: 0 2;
+    }
+
+    PlanExecutionSection .plan-list-row Button {
+        height: 1;
+        min-width: 6;
+        margin-right: 1;
+        border: none;
+        background: $surface;
+        color: $text;
+    }
+
+    PlanExecutionSection .plan-list-row .plan-status {
+        width: 9;
+        color: $success;
+    }
+
+    PlanExecutionSection .plan-list-row .plan-status.zombie {
+        color: $warning;
+    }
+
+    PlanExecutionSection .plan-list-row .plan-status.crashed {
+        color: $error;
     }
     """
 
@@ -86,6 +139,8 @@ class PlanExecutionSection(Vertical):
         # Dedupe set keyed by plan slug — prevents duplicate tabs when
         # master.json updates replay the same slug across polls.
         self._open_slugs: set[str] = set()
+        # Plans surfaced in the empty-state list (running + zombie only).
+        self._listed_plans: list[PlanSummary] = []
 
     # ------------------------------------------------------------------
     # Compose
@@ -93,15 +148,64 @@ class PlanExecutionSection(Vertical):
 
     def compose(self) -> ComposeResult:
         with TabbedContent(id="plan-exec-tabs"):
-            yield self._build_empty_pane()
+            yield self._build_empty_pane(self._listed_plans)
+
+    @classmethod
+    def _build_empty_pane(
+        cls, plans: list[PlanSummary]
+    ) -> TabPane:
+        body = Vertical(
+            *cls._empty_body_widgets(plans),
+            id="plan-exec-empty-body",
+        )
+        return TabPane(_EMPTY_PANE_TITLE, body, id=EMPTY_PANE_ID)
+
+    @classmethod
+    def _empty_body_widgets(
+        cls, plans: list[PlanSummary]
+    ) -> list[Any]:
+        listed = [
+            p for p in plans
+            if p.status == "running"  # zombies are still status=running
+        ]
+        if not listed:
+            return [Static(_EMPTY_PLACEHOLDER_TEXT, classes="empty-state")]
+        children: list[Any] = [
+            Static("Active plans", classes="plan-list-header")
+        ]
+        for plan in listed:
+            children.append(cls._build_plan_row(plan))
+        return children
 
     @staticmethod
-    def _build_empty_pane() -> TabPane:
-        return TabPane(
-            _EMPTY_PANE_TITLE,
-            Static(_EMPTY_PLACEHOLDER_TEXT, classes="empty-state"),
-            id=EMPTY_PANE_ID,
-        )
+    def _build_plan_row(plan: PlanSummary) -> Horizontal:
+        zombie = is_stale(plan)
+        status_label = "ZOMBIE" if zombie else "RUNNING"
+        status_classes = "plan-status zombie" if zombie else "plan-status"
+        row_widgets: list[Any] = [
+            Static(status_label, classes=status_classes),
+            Button(
+                plan.slug,
+                id=f"{_BTN_OPEN_PREFIX}{_safe(plan.slug)}",
+                tooltip="Open this plan's tab",
+            ),
+        ]
+        if zombie:
+            row_widgets.extend(
+                [
+                    Button(
+                        "Mark crashed",
+                        id=f"{_BTN_CRASH_PREFIX}{_safe(plan.slug)}",
+                        tooltip="Mark as crashed in master.json",
+                    ),
+                    Button(
+                        "Remove",
+                        id=f"{_BTN_REMOVE_PREFIX}{_safe(plan.slug)}",
+                        tooltip="Remove from master.json (keeps logs on disk)",
+                    ),
+                ]
+            )
+        return Horizontal(*row_widgets, classes="plan-list-row")
 
     # ------------------------------------------------------------------
     # Public API
@@ -119,6 +223,32 @@ class PlanExecutionSection(Vertical):
         has already been mounted.
         """
         self._model_factory = factory
+
+    def set_plan_summaries(
+        self, plans: Iterable[PlanSummary]
+    ) -> None:
+        """Update the running-plans list shown in the empty-state pane.
+
+        Filtered to plans with ``status == "running"`` (zombies included
+        — they're still nominally running). Has no effect on plans that
+        already have an open tab.
+        """
+        self._listed_plans = list(plans)
+        self._refresh_empty_pane()
+
+    def _refresh_empty_pane(self) -> None:
+        # Replace the empty pane's body in place rather than removing
+        # and re-adding the TabPane (Textual's TabbedContent generates
+        # an internal --content-tab-<id> widget that races with re-adds
+        # of the same pane id).
+        try:
+            body = self.query_one(
+                "#plan-exec-empty-body", Vertical
+            )
+        except Exception:
+            return
+        body.remove_children()
+        body.mount(*self._empty_body_widgets(self._listed_plans))
 
     def open_tab(self, slug: str) -> str | None:
         """Open a plan tab for ``slug``. Idempotent on the slug.
@@ -165,7 +295,42 @@ class PlanExecutionSection(Vertical):
         tabs = self.query_one("#plan-exec-tabs", TabbedContent)
         tabs.remove_pane(self._tab_id(slug))
         if not self._open_slugs:
-            tabs.add_pane(self._build_empty_pane())
+            tabs.add_pane(self._build_empty_pane(self._listed_plans))
+
+    # ------------------------------------------------------------------
+    # Empty-state list — open / mark-crashed / remove buttons
+    # ------------------------------------------------------------------
+
+    @on(Button.Pressed)
+    def _on_plan_list_button(self, event: Button.Pressed) -> None:
+        btn_id = event.button.id or ""
+        slug: str | None = None
+        action: str | None = None
+        for prefix, name in (
+            (_BTN_OPEN_PREFIX, "open"),
+            (_BTN_CRASH_PREFIX, "crash"),
+            (_BTN_REMOVE_PREFIX, "remove"),
+        ):
+            if btn_id.startswith(prefix):
+                action = name
+                safe = btn_id.removeprefix(prefix)
+                slug = self._lookup_slug(safe)
+                break
+        if action is None or slug is None:
+            return
+        event.stop()
+        if action == "open":
+            self.open_tab(slug)
+        elif action == "crash":
+            self.post_message(self.PlanCrashRequested(slug))
+        elif action == "remove":
+            self.post_message(self.PlanRemoveRequested(slug))
+
+    def _lookup_slug(self, safe: str) -> str | None:
+        for plan in self._listed_plans:
+            if _safe(plan.slug) == safe:
+                return plan.slug
+        return None
 
     # ------------------------------------------------------------------
     # Internals
@@ -185,5 +350,8 @@ class PlanExecutionSection(Vertical):
 
     @staticmethod
     def _tab_id(slug: str) -> str:
-        safe = slug.replace(".", "-").replace("/", "-").replace(" ", "-")
-        return f"plan-tab-{safe}"
+        return f"plan-tab-{_safe(slug)}"
+
+
+def _safe(slug: str) -> str:
+    return slug.replace(".", "-").replace("/", "-").replace(" ", "-")

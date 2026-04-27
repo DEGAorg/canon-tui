@@ -671,7 +671,7 @@ def verify_plan_execution(verbose: bool = False) -> bool:
     SLUG = "20260427-smoke"
 
     class _StubModel:
-        def __init__(self, slug: str) -> None:
+        def __init__(self, slug: str, plan_dir: Path) -> None:
             self.slug = slug
             self.issue_number = 99
             self.items = [
@@ -680,6 +680,7 @@ def verify_plan_execution(verbose: bool = False) -> bool:
                 )
             ]
             self.verdict = "running"
+            self.plan_dir = plan_dir
 
         def subscribe_log(
             self, item_id: int, callback: Callable[[str], None]
@@ -687,8 +688,8 @@ def verify_plan_execution(verbose: bool = False) -> bool:
             del item_id, callback
             return lambda: None
 
-    def _factory(slug: str) -> _StubModel:
-        return _StubModel(slug)
+        def poll_now(self) -> None:
+            return None
 
     def _write_fixture(project: Path) -> None:
         plans_dir = project / ".orchestrator" / "plans" / SLUG
@@ -739,6 +740,11 @@ def verify_plan_execution(verbose: bool = False) -> bool:
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp)
             _write_fixture(project)
+
+            def _factory(slug: str) -> _StubModel:
+                return _StubModel(
+                    slug, project / ".orchestrator" / "plans" / slug
+                )
 
             class Harness(App[None]):
                 CSS = "Screen { overflow: hidden; }"

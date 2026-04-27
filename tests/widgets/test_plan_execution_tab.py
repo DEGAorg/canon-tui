@@ -57,6 +57,7 @@ class _FakeModel:
     issue_number: int | None = 42
     items: list[DepGraphItem] = field(default_factory=list)
     verdict: str = "running"
+    plan_dir: Path = field(default_factory=lambda: Path("/nonexistent-fake-plan"))
     subscriptions: list[_Subscription] = field(default_factory=list)
 
     def subscribe_log(
@@ -69,6 +70,9 @@ class _FakeModel:
             sub.unsubscribed = True
 
         return _unsubscribe
+
+    def poll_now(self) -> None:
+        return None
 
 
 def _fixture_items() -> list[DepGraphItem]:

@@ -8,10 +8,10 @@ Works from any directory — no need to clone the repo. Installs `canon` and
 
 ## Source
 
-Package: `canon-tui` from `DEGAorg/canon-tui` (main branch)
+Package: `canon-tui` from `DEGAorg/canon-tui` (canon branch)
 
 ```
-git+https://github.com/DEGAorg/canon-tui.git@main
+git+https://github.com/DEGAorg/canon-tui.git@canon
 ```
 
 ---
@@ -49,7 +49,7 @@ package's `requires-python` constraint.
 Run the install command:
 
 ```bash
-uv tool install "canon-tui @ git+https://github.com/DEGAorg/canon-tui.git@main" --force --reinstall --quiet
+uv tool install "canon-tui @ git+https://github.com/DEGAorg/canon-tui.git@canon" --force --reinstall --quiet
 ```
 
 - `--force` — overwrite any existing installation
@@ -107,7 +107,7 @@ Fetch the latest version from GitHub and write it to
 `~/.degacore/config/commands/apply-canon-tui.md`:
 
 ```
-https://raw.githubusercontent.com/DEGAorg/canon-tui/main/commands/apply-canon-tui.md
+https://raw.githubusercontent.com/DEGAorg/canon-tui/canon/commands/apply-canon-tui.md
 ```
 
 If the fetch fails (e.g., no network), fall back to copying the local
@@ -123,7 +123,7 @@ Canon TUI installed.
   canon     — TUI viewer for AI agent activity
   canon-ctl — configuration utility
 
-Installed from: DEGAorg/canon-tui@main
+Installed from: DEGAorg/canon-tui@canon
 Method: uv tool install (isolated environment)
 
 Run 'canon .' from any project directory to launch.

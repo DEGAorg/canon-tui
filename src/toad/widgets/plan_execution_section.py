@@ -273,6 +273,12 @@ class PlanExecutionSection(Vertical):
             get_current_agent=self._get_current_agent,
             id=tab_id,
         )
+        # Re-point the model's message sink at the tab now that it exists.
+        # The factory built the model with a placeholder pane target so
+        # ItemStatusChanged / PlanFinished bubble through the correct tab
+        # handler instead of dying on the pane (which has no handler).
+        if hasattr(model, "set_target"):
+            model.set_target(tab)
         tabs = self.query_one("#plan-exec-tabs", TabbedContent)
         if not self._open_slugs:
             self._remove_empty_pane(tabs)

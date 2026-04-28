@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from textual.app import ComposeResult
 from textual.containers import Vertical
@@ -64,6 +64,9 @@ class PlanExecutionModel(Protocol):
 
     def poll_now(self) -> None:
         """Rescan the plan directory and post any diffs."""
+
+    def set_target(self, target: Any) -> None:
+        """Re-point the model's message sink at the given widget."""
 
 
 _DEFAULT_AGENT = "—"

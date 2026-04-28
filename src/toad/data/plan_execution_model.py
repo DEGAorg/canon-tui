@@ -107,6 +107,15 @@ class PlanExecutionModel:
     # Lifecycle
     # ------------------------------------------------------------------
 
+    def set_target(self, target: _MessageTarget) -> None:
+        """Re-point the message sink. Used when the owning tab is mounted
+        after the model is constructed — the factory creates the model
+        with a placeholder pane target, and ``PlanExecutionSection.open_tab``
+        swaps in the actual tab so ``ItemStatusChanged`` messages reach
+        ``on_plan_execution_tab_item_status_changed``.
+        """
+        self._target = target
+
     def start(self) -> None:
         """Mark the model as live; subsequent ``poll_now`` calls emit diffs."""
         self._started = True

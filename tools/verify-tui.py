@@ -644,13 +644,14 @@ def verify_outreach(verbose: bool = False) -> bool:
 
 
 def verify_plan_execution(verbose: bool = False) -> bool:
-    """Verify ProjectStatePane auto-opens a plan tab from master.json.
+    """Verify ProjectStatePane auto-opens a plan tab on in-session arrival.
 
-    Writes a fixture project containing ``.orchestrator/master.json`` plus
-    one plan dir, mounts ``ProjectStatePane``, registers a stub model
-    factory, and asserts the pane reveals itself, the plan tab is
-    mounted under the expected id, and the status rail renders one glyph
-    per plan item with the correct running glyph.
+    The pane uses a baseline filter: pre-existing plans (those in
+    ``master.json`` at canon launch) are NOT auto-opened. This smoke
+    starts with an empty plan list, mounts the pane, then writes a new
+    plan to ``master.json`` — simulating an orch run started while
+    canon is up. The new slug must auto-open, reveal the pane, and
+    render its tab + status rail.
     """
     import json
     import tempfile
@@ -704,7 +705,12 @@ def verify_plan_execution(verbose: bool = False) -> bool:
             json.dumps(_state_payload(status)), encoding="utf-8"
         )
 
-    def _write_fixture(project: Path) -> None:
+    def _write_empty_master(project: Path) -> None:
+        master = project / ".orchestrator" / "master.json"
+        master.parent.mkdir(parents=True)
+        master.write_text(json.dumps({"plans": []}), encoding="utf-8")
+
+    def _add_plan_in_session(project: Path) -> None:
         plans_dir = project / ".orchestrator" / "plans" / SLUG
         (plans_dir / "logs").mkdir(parents=True)
         _write_state(plans_dir, "running")
@@ -735,7 +741,7 @@ def verify_plan_execution(verbose: bool = False) -> bool:
     async def _run() -> None:
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp)
-            _write_fixture(project)
+            _write_empty_master(project)
             plans_dir = project / ".orchestrator" / "plans" / SLUG
 
             class Harness(App[None]):
@@ -759,6 +765,10 @@ def verify_plan_execution(verbose: bool = False) -> bool:
                     return model
 
                 pane.configure_plan_execution(_factory)
+                await pilot.pause()
+                # Simulate an orch run starting while canon is already up.
+                _add_plan_in_session(project)
+                await pilot.pause()
                 await pilot.pause()
                 await pilot.pause()
 

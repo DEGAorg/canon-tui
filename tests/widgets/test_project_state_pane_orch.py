@@ -1,17 +1,17 @@
 """Pilot tests for ``ProjectStatePane`` orchestrator bootstrap.
 
-When Canon starts inside a project that already has a live
-``.orchestrator/master.json``, the pane is expected to:
+Spec (post-baseline-filter):
 
-- reveal itself (``display = True``) once
-  :class:`OrchestratorStateWidget.PlansUpdated` fires,
-- mount a :class:`PlanExecutionSection` and open one tab per plan slug,
-- name the tab pane after the slug (so the agent can address it via the
-  panel-routing layer).
-
-When no plan is active yet — the pane has been configured for plan
-execution but ``master.json`` does not exist — the section must still
-expose an empty-state placeholder so the user can find the feature.
+- Plans already in ``master.json`` when canon launches are *baseline* —
+  they are NOT auto-opened. The pane stays hidden, no tab is mounted.
+  These plans are surfaced in the section's running-plans list (rendered
+  inside the empty-state pane) for the user to pick on demand.
+- A plan slug that *appears* in ``master.json`` after canon is up — i.e.
+  an orch run started during this canon session — IS auto-opened: pane
+  reveals, plan execution section is shown, a tab is mounted with a
+  slug-derived id.
+- With no ``master.json`` at all, the section still renders an empty
+  placeholder so the user can find the feature.
 
 These pilots use a stub model factory so no real orchestrator
 filesystem watcher runs.
@@ -151,22 +151,13 @@ class _Harness(App[None]):
 
 
 class TestPlanExecutionBootstrap:
-    """Pane reveals itself and opens a plan tab when ``master.json`` exists."""
+    """Pre-existing plans don't auto-open; in-session arrivals do."""
 
     @pytest.mark.asyncio
-    async def test_pane_visible_after_plans_updated(self, tmp_path: Path) -> None:
-        _write_master_json(tmp_path)
-        app = _Harness(tmp_path)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            pane = app.query_one(ProjectStatePane)
-            pane.configure_plan_execution(_make_factory())
-            await pilot.pause()
-            await pilot.pause()
-            assert pane.display is True
-
-    @pytest.mark.asyncio
-    async def test_section_is_mounted_with_slug_tab(self, tmp_path: Path) -> None:
+    async def test_existing_plan_does_not_auto_open(
+        self, tmp_path: Path
+    ) -> None:
+        """Canon launched into a project with a running plan stays silent."""
         _write_master_json(tmp_path)
         app = _Harness(tmp_path)
         async with app.run_test() as pilot:
@@ -176,19 +167,36 @@ class TestPlanExecutionBootstrap:
             await pilot.pause()
             await pilot.pause()
             section = pane.query_one(PlanExecutionSection)
-            assert section.display is True
-            assert SLUG in section.open_slugs
+            assert SLUG not in section.open_slugs
+            # Running-plans list is populated so the user can open it.
+            assert any(p.slug == SLUG for p in section._listed_plans)
 
     @pytest.mark.asyncio
-    async def test_tab_id_matches_slug(self, tmp_path: Path) -> None:
-        _write_master_json(tmp_path)
+    async def test_in_session_plan_auto_opens(self, tmp_path: Path) -> None:
+        """A new plan slug arriving after canon launch opens its tab."""
+        # Master.json starts empty — establishes empty baseline.
+        master = tmp_path / ".orchestrator" / "master.json"
+        master.parent.mkdir(parents=True)
+        master.write_text(json.dumps({"plans": []}), encoding="utf-8")
+
         app = _Harness(tmp_path)
         async with app.run_test() as pilot:
             await pilot.pause()
             pane = app.query_one(ProjectStatePane)
             pane.configure_plan_execution(_make_factory())
             await pilot.pause()
+
+            # Now write a new plan — simulates an orch run started while
+            # canon is up.
+            _write_master_json(tmp_path)
             await pilot.pause()
+            await pilot.pause()
+            await pilot.pause()
+
+            section = pane.query_one(PlanExecutionSection)
+            assert pane.display is True
+            assert section.display is True
+            assert SLUG in section.open_slugs
             tab = pane.query_one(PlanExecutionTab)
             assert tab.id == f"plan-tab-{SLUG}"
 
@@ -196,6 +204,138 @@ class TestPlanExecutionBootstrap:
 # ----------------------------------------------------------------------
 # Tests — idle / no-orch state
 # ----------------------------------------------------------------------
+
+
+class TestZombieList:
+    """Running-plans list surfaces zombies and exposes cleanup actions."""
+
+    @pytest.mark.asyncio
+    async def test_zombie_plan_is_listed_with_cleanup_buttons(
+        self, tmp_path: Path
+    ) -> None:
+        """A stale running plan shows up with Mark-crashed + Remove buttons."""
+        # Build a master.json with one plan whose updatedAt is way in the
+        # past — guaranteed stale.
+        plans_dir = tmp_path / ".orchestrator" / "plans" / SLUG
+        plans_dir.mkdir(parents=True)
+        master = tmp_path / ".orchestrator" / "master.json"
+        master.write_text(
+            json.dumps(
+                {
+                    "plans": [
+                        {
+                            "slug": SLUG,
+                            "status": "running",
+                            "statePath": "",
+                            "startedAt": "2020-01-01T00:00:00Z",
+                            "updatedAt": "2020-01-01T00:00:00Z",
+                            "progress": {
+                                "total": 1,
+                                "done": 0,
+                                "running": 0,
+                                "failed": 0,
+                            },
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        app = _Harness(tmp_path)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            pane = app.query_one(ProjectStatePane)
+            pane.configure_plan_execution(_make_factory())
+            await pilot.pause()
+            await pilot.pause()
+
+            # User clicks the Mark-crashed button on the zombie row.
+            from toad.widgets.plan_execution_section import (
+                PlanExecutionSection as _S,
+            )
+
+            section = pane.query_one(_S)
+            section.show_section = lambda *_: None  # type: ignore[assignment]
+            from textual.widgets import Button
+
+            crash_btn = section.query_one(
+                f"#plan-crash-{SLUG}", Button
+            )
+            crash_btn.press()
+            await pilot.pause()
+            await pilot.pause()
+
+            # master.json now reports the plan as crashed.
+            data = json.loads(master.read_text(encoding="utf-8"))
+            entry = next(p for p in data["plans"] if p["slug"] == SLUG)
+            assert entry["status"] == "crashed"
+
+    @pytest.mark.asyncio
+    async def test_remove_button_drops_plan_from_master_json(
+        self, tmp_path: Path
+    ) -> None:
+        plans_dir = tmp_path / ".orchestrator" / "plans" / SLUG
+        plans_dir.mkdir(parents=True)
+        master = tmp_path / ".orchestrator" / "master.json"
+        master.write_text(
+            json.dumps(
+                {
+                    "plans": [
+                        {
+                            "slug": SLUG,
+                            "status": "running",
+                            "statePath": "",
+                            "startedAt": "2020-01-01T00:00:00Z",
+                            "updatedAt": "2020-01-01T00:00:00Z",
+                            "progress": {
+                                "total": 1,
+                                "done": 0,
+                                "running": 0,
+                                "failed": 0,
+                            },
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        app = _Harness(tmp_path)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            pane = app.query_one(ProjectStatePane)
+            pane.configure_plan_execution(_make_factory())
+            await pilot.pause()
+            await pilot.pause()
+
+            from textual.widgets import Button
+
+            remove_btn = pane.query_one(
+                f"#plan-remove-{SLUG}", Button
+            )
+            remove_btn.press()
+            await pilot.pause()
+            await pilot.pause()
+
+            data = json.loads(master.read_text(encoding="utf-8"))
+            assert all(p["slug"] != SLUG for p in data["plans"])
+
+
+class TestPanelRoute:
+    """The plan_execution panel route opens the section without auto-mounting tabs."""
+
+    @pytest.mark.asyncio
+    async def test_panel_route_registered(self) -> None:
+        """The route exists and points at the plan-exec section."""
+        from toad.widgets.project_state_pane import PANEL_ROUTES
+        from toad.widgets.plan_execution_section import (
+            PlanExecutionSection as _S,
+        )
+
+        assert "plan_execution" in PANEL_ROUTES
+        section_id, _tab_id = PANEL_ROUTES["plan_execution"]
+        assert section_id == _S.SECTION_ID
 
 
 class TestIdlePlaceholder:

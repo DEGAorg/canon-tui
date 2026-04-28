@@ -248,6 +248,8 @@ class PlanExecutionTab(TabPane):
         slug = self._model.slug
         issue = self._model.issue_number
         done = sum(1 for item in self._items if item.status == "done")
+        running = sum(1 for item in self._items if item.status == "running")
+        failed = sum(1 for item in self._items if item.status == "failed")
         total = len(self._items)
         agent = (
             self._get_current_agent() if self._get_current_agent else _DEFAULT_AGENT
@@ -256,6 +258,11 @@ class PlanExecutionTab(TabPane):
         if issue is not None:
             parts.append(f"#{issue}")
         parts.append(self._verdict)
-        parts.append(f"{done}/{total}")
+        counters = [f"✓{done}/{total}"]
+        if running:
+            counters.append(f"◉{running}")
+        if failed:
+            counters.append(f"✗{failed}")
+        parts.append(" ".join(counters))
         parts.append(f"agent: {agent}")
         return "  ".join(parts)

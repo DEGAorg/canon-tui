@@ -222,16 +222,10 @@ See on-screen instructions for details.
                         self.suggestion = completes[-1]
 
     def action_enter_pressed(self) -> None:
-        if self.multi_line:
-            self.action_newline()
-        else:
-            self.action_submit()
+        self.action_submit()
 
     def action_shift_enter_pressed(self) -> None:
-        if self.multi_line:
-            self.action_multiline_submit()
-        else:
-            self.action_newline()
+        self.action_newline()
 
     def action_multiline_submit(self) -> None:
         if not self.agent_ready:

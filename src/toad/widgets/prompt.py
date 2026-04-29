@@ -106,10 +106,10 @@ See on-screen instructions for details.
             tooltip="Single-line: send. Multi-line: insert newline.",
         ),
         Binding(
-            "ctrl+j,shift+enter",
+            "alt+enter,ctrl+j,shift+enter",
             "shift_enter_pressed",
             "Line",
-            key_display="⇧+⏎",
+            key_display="⌥+⏎",
             tooltip="Single-line: insert newline. Multi-line: send.",
         ),
         Binding(

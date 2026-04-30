@@ -168,13 +168,16 @@ class BuilderView(Widget, can_focus=True):
         )
         yield Static(id="builder-error")
         yield PipelineView(id="builder-pipeline")
+        # Stats live above the log so all the headline state (phase,
+        # status, pipeline, counts) sits at the top of the view; the
+        # log scrolls underneath.
+        yield Static("[dim]  No metrics[/]", id="builder-metrics")
         with VerticalScroll():
             yield Static(
                 "Waiting for build activity…",
                 classes="empty-state",
                 id="builder-empty-label",
             )
-        yield Static("[dim]  No metrics[/]", id="builder-metrics")
 
     async def on_canon_state_widget_canon_state_updated(
         self,

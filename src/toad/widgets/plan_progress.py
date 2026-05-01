@@ -88,6 +88,6 @@ class PlanProgress(Static):
             label = "—"
         else:
             pct = round(done * 100 / total)
-            label = f"{done}/{total} {pct:>3d}%"
+            label = f"{pct}%"
         out.append(label.center(_BAR_WIDTH), style="bold")
         return out

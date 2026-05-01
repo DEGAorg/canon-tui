@@ -429,9 +429,6 @@ class PlanExecutionTab(TabPane):
         running = sum(1 for item in self._items if item.status == "running")
         failed = sum(1 for item in self._items if item.status == "failed")
         total = len(self._items)
-        agent = (
-            self._get_current_agent() if self._get_current_agent else _DEFAULT_AGENT
-        )
         terminal = self._terminal
 
         parts: list[str] = [slug]
@@ -447,7 +444,6 @@ class PlanExecutionTab(TabPane):
             parts.append(f"PR #{terminal.pr_number}")
         if terminal is not None and terminal.elapsed_seconds is not None:
             parts.append(_format_elapsed(terminal.elapsed_seconds))
-        parts.append(f"agent: {agent}")
         first_line = "  ".join(parts)
 
         details = self._format_terminal_details()

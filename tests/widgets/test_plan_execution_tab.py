@@ -111,12 +111,12 @@ class _Harness(App[None]):
 
 
 class TestHeader:
-    """Header shows slug, issue #, counts, verdict, and agent name."""
+    """Header shows slug, issue #, counts, and badge."""
 
     @pytest.mark.asyncio
-    async def test_header_shows_slug_issue_counts_and_agent(self) -> None:
+    async def test_header_shows_slug_issue_counts_and_badge(self) -> None:
         model = _FakeModel(items=_fixture_items())
-        app = _Harness(model, agent="claude")
+        app = _Harness(model)
         async with app.run_test() as pilot:
             await pilot.pause()
             tab = app.query_one(PlanExecutionTab)
@@ -125,16 +125,16 @@ class TestHeader:
             assert "#42" in header_text
             assert "1/4" in header_text  # one "done" out of four items
             assert "running" in header_text
-            assert "claude" in header_text
 
     @pytest.mark.asyncio
-    async def test_header_reflects_agent_callable(self) -> None:
+    async def test_header_omits_agent_token(self) -> None:
+        """Agent name was removed from the header — assert it stays out."""
         model = _FakeModel(items=_fixture_items())
-        app = _Harness(model, agent="codex")
+        app = _Harness(model)
         async with app.run_test() as pilot:
             await pilot.pause()
             tab = app.query_one(PlanExecutionTab)
-            assert "codex" in tab.header_text()
+            assert "agent:" not in tab.header_text()
 
     @pytest.mark.asyncio
     async def test_header_without_issue_number(self) -> None:

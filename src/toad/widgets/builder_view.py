@@ -98,24 +98,20 @@ def _render_log(entry: LogEntry, *, now: datetime | None = None) -> str:
 def _format_friendly_timestamp(
     raw: str, *, now: datetime | None = None
 ) -> str:
-    """Convert an ISO timestamp into a human-friendly relative/clock label."""
+    """Convert an ISO timestamp into a clock-time label (HH:MM:SS).
+
+    Relative labels ("12s ago", "just now") feel stale because they only
+    update when fresh state arrives, not as wall-clock time advances. For
+    now show absolute local time so the column doesn't lie. The signature
+    keeps ``now`` for tests / a future relative-time variant.
+    """
+    del now  # absolute time mode — no relative window
     if not raw:
         return ""
     parsed = _parse_iso(raw)
     if parsed is None:
-        # Last-resort: trim long timestamps to HH:MM:SS so the column stays narrow.
         return raw[-8:] if len(raw) >= 8 else raw
-    current = now or datetime.now(timezone.utc)
-    delta = (current - parsed).total_seconds()
-    if delta < 5:
-        return "just now"
-    if delta < 60:
-        return f"{int(delta)}s ago"
-    if delta < 3600:
-        return f"{int(delta // 60)}m ago"
-    if delta < 86400:
-        return parsed.astimezone().strftime("%H:%M")
-    return parsed.astimezone().strftime("%b %d %H:%M")
+    return parsed.astimezone().strftime("%H:%M:%S")
 
 
 def _parse_iso(raw: str) -> datetime | None:

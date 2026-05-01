@@ -146,20 +146,19 @@ class PlanExecutionTab(TabPane):
 
     DEFAULT_CSS = """
     PlanExecutionTab #plan-exec-header-row {
-        height: auto;
-        max-height: 3;
+        height: 1;
         background: $panel;
     }
     PlanExecutionTab #plan-exec-header-text {
-        height: auto;
+        height: 1;
         background: $panel;
         color: $text;
         padding: 0 1;
         width: 1fr;
     }
     PlanExecutionTab PlanProgress {
-        width: 12;
-        height: 2;
+        width: 17;
+        height: 1;
         margin: 0 1 0 0;
     }
     PlanExecutionTab #plan-exec-header-row Button {
@@ -440,16 +439,16 @@ class PlanExecutionTab(TabPane):
             parts.append(f"◉{running}")
         if failed:
             parts.append(f"✗{failed}")
-        if terminal is not None and terminal.pr_number is not None:
-            parts.append(f"PR #{terminal.pr_number}")
-        if terminal is not None and terminal.elapsed_seconds is not None:
-            parts.append(_format_elapsed(terminal.elapsed_seconds))
-        first_line = "  ".join(parts)
-
-        details = self._format_terminal_details()
-        if details:
-            return f"{first_line}\n{details}"
-        return first_line
+        if terminal is not None:
+            if terminal.pr_number is not None:
+                parts.append(f"PR #{terminal.pr_number}")
+            if terminal.elapsed_seconds is not None:
+                parts.append(_format_elapsed(terminal.elapsed_seconds))
+            if terminal.items_reworked:
+                parts.append(f"{terminal.items_reworked} reworked")
+            if terminal.review_iterations:
+                parts.append(f"{terminal.review_iterations} reviews")
+        return "  ".join(parts)
 
     def _status_badge(self, terminal: "TerminalInfo | None") -> str:
         """One-token state for the header — keeps the rail's signal at the top."""
@@ -478,24 +477,6 @@ class PlanExecutionTab(TabPane):
         # green and the badge reads as a state, not a heading).
         phase = getattr(self._model, "phase", _phase_from_verdict(self._verdict))
         return f"⟲ {phase.lower()}" if phase else self._verdict
-
-    def _format_terminal_details(self) -> str:
-        """Second header line — only used when there's something extra to say.
-
-        PR URL is reachable through the ``→ PR`` button, so it's not echoed
-        here. Verify state is intentionally hidden — it's advisory in the
-        engine and renders confusingly next to ``✓ Completed (SHIP)``.
-        """
-        terminal = self._terminal
-        if terminal is None:
-            return ""
-        bits: list[str] = []
-        if terminal.items_reworked:
-            bits.append(f"{terminal.items_reworked} reworked")
-        if terminal.review_iterations:
-            bits.append(f"{terminal.review_iterations} reviews")
-        return "  ".join(bits)
-
 
 def _phase_from_verdict(verdict: str) -> str:
     if verdict == "SHIP":

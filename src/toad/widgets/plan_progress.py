@@ -1,16 +1,15 @@
-"""PlanProgress — compact 2-row progress gauge for the plan-execution header.
+"""PlanProgress — single-line progress gauge for the plan-execution header.
 
-Two-row stacked layout:
+One row: a 12-cell segmented bar followed by a bold percentage.
+Each bar cell is coloured by the plan item it represents (proportional
+mapping from cell index to item index), so a glance shows the run's
+overall composition — done, running, queued, failed.
 
-- Row 0 — 12-cell segmented bar. Each cell is coloured by the plan
-  item it represents (proportional mapping from cell index to item
-  index), so a glance at the bar shows the run's overall composition:
-  how many done, running, queued, failed.
-- Row 1 — bold ``done/total <pct>%`` label centred under the bar.
-
-This widget started life as a circular donut; terminal cells aren't
-square, so the ring rendered lopsided. The flat horizontal gauge reads
-cleanly at any zoom.
+The widget started life as a circular donut, then a 2-row stack;
+terminal cells aren't square so the ring rendered lopsided, and the
+stack ate vertical space the header didn't have to spare. The flat,
+inline gauge reads cleanly at any zoom and keeps the header on a
+single line.
 """
 
 from __future__ import annotations
@@ -32,19 +31,21 @@ _BAR_GLYPH = "█"
 _EMPTY_GLYPH = "·"
 _EMPTY_COLOR = "grey30"
 _FALLBACK_COLOR = "white"
+# Bar (12) + space + percent label (up to "100%" = 4) = 17.
+_WIDGET_WIDTH = _BAR_WIDTH + 1 + 4
 
 
 class PlanProgress(Static):
-    """Compact 2-row gauge — segmented bar plus percent label."""
+    """Single-line gauge — segmented bar followed by percent label."""
 
     DEFAULT_CSS = """
     PlanProgress {
-        width: 12;
-        height: 2;
+        width: 17;
+        height: 1;
         background: $panel;
         color: $text;
         padding: 0;
-        content-align: center middle;
+        content-align: left middle;
     }
     """
 
@@ -83,11 +84,10 @@ class PlanProgress(Static):
             item = self._items[item_index]
             color = STATUS_COLORS.get(item.status, _FALLBACK_COLOR)
             out.append(_BAR_GLYPH, style=color)
-        out.append("\n")
         if total == 0:
-            label = "—"
+            label = "  —"
         else:
             pct = round(done * 100 / total)
-            label = f"{pct}%"
-        out.append(label.center(_BAR_WIDTH), style="bold")
+            label = f" {pct:>3d}%"
+        out.append(label, style="bold")
         return out

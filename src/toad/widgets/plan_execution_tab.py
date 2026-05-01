@@ -172,12 +172,29 @@ class PlanExecutionTab(TabPane):
     PlanExecutionTab #plan-exec-header-row Button.hidden {
         display: none;
     }
+    /* Action button — accent-coloured, treated like a primary verb. */
     PlanExecutionTab #plan-exec-pr-btn {
         color: $accent;
+        text-style: bold;
     }
+    PlanExecutionTab #plan-exec-pr-btn:hover {
+        background: $accent 25%;
+    }
+    /* Destructive corner action — visually subdued so it doesn't compete
+       with the action button next to it. Lights up red only on hover or
+       focus to make "this kills the tab" intent unambiguous. The extra
+       left margin separates it from the action group. */
     PlanExecutionTab #plan-exec-close-btn {
         min-width: 3;
+        margin: 0 1 0 2;
+        background: transparent;
+        color: $text-muted;
+    }
+    PlanExecutionTab #plan-exec-close-btn:hover,
+    PlanExecutionTab #plan-exec-close-btn:focus {
         color: $error;
+        background: $error 20%;
+        text-style: bold;
     }
     PlanExecutionTab Vertical.plan-exec-body {
         height: 1fr;

@@ -318,6 +318,50 @@ class TestItemLogAppended:
         assert "legacy summary" in joined
         assert "fresh worker output" in joined
 
+    def test_subscribe_replays_existing_log_content(self, plan_dir: Path) -> None:
+        """A fresh subscriber receives whatever is already on disk so
+        switching away from an item and coming back doesn't wipe the
+        worker pane. The on-disk log survives the navigation; the model
+        must replay it on attach.
+        """
+        target = _Recorder()
+        model = PlanExecutionModel(plan_dir, target=target, poll=True)
+        model.start()
+        log_path = plan_dir / "logs" / "worker-1.log"
+        log_path.write_text("history line 1\nhistory line 2\n", encoding="utf-8")
+
+        # First subscriber sees the existing file as a single replay chunk.
+        first: list[str] = []
+        unsubscribe_first = model.subscribe_log(1, first.append)
+        try:
+            assert "history line 1" in "".join(first)
+            assert "history line 2" in "".join(first)
+            # No extra delivery on poll because the snapshot synced position.
+            model.poll_now()
+            assert "".join(first).count("history line 1") == 1
+        finally:
+            unsubscribe_first()
+
+        # New writes while no subscriber.
+        with log_path.open("a", encoding="utf-8") as fh:
+            fh.write("offline append\n")
+
+        # Re-attach (simulates navigating away and back to the item).
+        second: list[str] = []
+        unsubscribe_second = model.subscribe_log(1, second.append)
+        try:
+            joined = "".join(second)
+            # Must see the full history *and* the offline append, exactly once.
+            assert "history line 1" in joined
+            assert "history line 2" in joined
+            assert joined.count("offline append") == 1
+            model.poll_now()
+            # Polling after the snapshot must not re-deliver the gap.
+            assert "".join(second).count("offline append") == 1
+        finally:
+            unsubscribe_second()
+            model.stop()
+
     def test_log_pane_message_class_is_used(self, plan_dir: Path) -> None:
         """The log-append message class lives on ``PlanWorkerLogPane``.
 

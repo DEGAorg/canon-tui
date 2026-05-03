@@ -264,6 +264,60 @@ class TestItemLogAppended:
         assert "before unsub" in joined
         assert "after unsub" not in joined
 
+    def test_subscriber_reads_engine_worker_log(self, plan_dir: Path) -> None:
+        """The orchestrator engine pipes the worker tmux pane to
+        ``logs/worker-<id>.log``; the model must tail that file rather
+        than the legacy ``logs/<id>.log`` path so the worker pane shows
+        the live agent conversation, not just the final summary line.
+        """
+        target = _Recorder()
+        model = PlanExecutionModel(plan_dir, target=target, poll=True)
+        received: list[str] = []
+        unsubscribe = model.subscribe_log(1, received.append)
+        model.start()
+        try:
+            log_path = plan_dir / "logs" / "worker-1.log"
+            log_path.write_text("agent: thinking…\n", encoding="utf-8")
+            model.poll_now()
+            with log_path.open("a", encoding="utf-8") as fh:
+                fh.write("tool_use: Read(plan.md)\n")
+            model.poll_now()
+        finally:
+            unsubscribe()
+            model.stop()
+
+        joined = "".join(received)
+        assert "thinking" in joined
+        assert "Read(plan.md)" in joined
+
+    def test_worker_log_supersedes_legacy_path(self, plan_dir: Path) -> None:
+        """If a legacy ``logs/<id>.log`` was created first and the engine
+        later writes ``logs/worker-<id>.log``, the model switches to the
+        engine file from byte 0 — we must not skip the prefix of the new
+        file because of bytes already consumed from the legacy one.
+        """
+        target = _Recorder()
+        model = PlanExecutionModel(plan_dir, target=target, poll=True)
+        received: list[str] = []
+        unsubscribe = model.subscribe_log(1, received.append)
+        model.start()
+        try:
+            (plan_dir / "logs" / "1.log").write_text(
+                "legacy summary\n", encoding="utf-8"
+            )
+            model.poll_now()
+            (plan_dir / "logs" / "worker-1.log").write_text(
+                "fresh worker output\n", encoding="utf-8"
+            )
+            model.poll_now()
+        finally:
+            unsubscribe()
+            model.stop()
+
+        joined = "".join(received)
+        assert "legacy summary" in joined
+        assert "fresh worker output" in joined
+
     def test_log_pane_message_class_is_used(self, plan_dir: Path) -> None:
         """The log-append message class lives on ``PlanWorkerLogPane``.
 

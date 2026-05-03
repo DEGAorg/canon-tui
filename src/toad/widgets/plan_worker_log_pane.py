@@ -16,6 +16,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Protocol, runtime_checkable
 
+from rich.text import Text
 from textual.message import Message
 from textual.widgets import RichLog
 
@@ -123,7 +124,13 @@ class PlanWorkerLogPane(RichLog):
         if event.item_id != self._item_id:
             return
         self._appended.append(event.text)
-        self.write(event.text)
+        # Worker logs come straight from `tmux pipe-pane` and contain raw
+        # ANSI escape codes (cursor moves, colour, terminal-mode toggles).
+        # `Text.from_ansi` parses the colour bits Rich understands and
+        # discards the unrenderable terminal-control sequences so the pane
+        # shows readable conversation instead of literal `[?1006l`-style
+        # garbage.
+        self.write(Text.from_ansi(event.text))
 
     # ------------------------------------------------------------------
     # Internals

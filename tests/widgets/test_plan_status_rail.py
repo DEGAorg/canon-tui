@@ -191,3 +191,64 @@ class TestItemStatusChanged:
             rail.post_message(PlanStatusRail.ItemStatusChanged(999, "done"))
             await pilot.pause()
             assert rail.glyphs_plain() == before
+
+
+# ------------------------------------------------------------------
+# Pulse — running glyphs alternate between two characters
+# ------------------------------------------------------------------
+
+
+class TestRunningPulse:
+    """Running items pulse; static statuses don't.
+
+    The pulse is a presentation detail layered on top of the canonical
+    glyph map, so ``glyphs_plain()`` (the assertion API used elsewhere)
+    keeps returning the canonical glyph and we inspect ``render()``
+    directly to see the alternate frame.
+    """
+
+    @pytest.mark.asyncio
+    async def test_pulse_timer_runs_only_when_a_running_item_exists(self) -> None:
+        all_done = [RailItem(id=1, status="done"), RailItem(id=2, status="done")]
+        app = _Harness(all_done)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            rail = app.query_one(PlanStatusRail)
+            assert rail._pulse_timer is None
+
+        with_running = _fixture_items()  # contains id=2 running
+        app = _Harness(with_running)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            rail = app.query_one(PlanStatusRail)
+            assert rail._pulse_timer is not None
+
+    @pytest.mark.asyncio
+    async def test_alternate_frame_uses_pulse_glyph(self) -> None:
+        items = _fixture_items()
+        app = _Harness(items)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            rail = app.query_one(PlanStatusRail)
+            # On-frame: render uses the canonical running glyph.
+            on_frame = rail.render().plain
+            assert STATUS_GLYPHS["running"] in on_frame
+            # Force the off-frame and re-render.
+            rail._pulse_on = False
+            rail.refresh()
+            await pilot.pause()
+            off_frame = rail.render().plain
+            assert "◎" in off_frame
+            assert STATUS_GLYPHS["running"] not in off_frame
+
+    @pytest.mark.asyncio
+    async def test_pulse_stops_when_last_running_item_finishes(self) -> None:
+        items = [RailItem(id=1, status="running")]
+        app = _Harness(items)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            rail = app.query_one(PlanStatusRail)
+            assert rail._pulse_timer is not None
+            rail.post_message(PlanStatusRail.ItemStatusChanged(1, "done"))
+            await pilot.pause()
+            assert rail._pulse_timer is None

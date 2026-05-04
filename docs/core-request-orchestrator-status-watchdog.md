@@ -148,6 +148,33 @@ re-parsing of `engine.log`.
 
 ---
 
+---
+
+## Bonus — `/canon-start` should surface the State panel
+
+**Files:** `~/.claude/commands/canon-start.md` (Phase 1 — Initialize)
+
+The TUI's State section in the right pane is hidden by default. The
+user opens it via the toolbar or by asking the agent (``show me the
+state``). When they invoke ``/canon-start``, ``.canon/state.json``
+starts updating immediately but the panel stays hidden — confusing.
+
+Stay consistent with the existing ``show me X`` pattern (which is
+agent-driven, not state-watch): one-line addition near the top of
+``canon-start.md``, same idiom as the existing ``terminal-ui-write.sh``
+guards.
+
+```bash
+command -v canon-ctl >/dev/null && canon-ctl action "screen.show_state" || true
+```
+
+Why agent-side and not canon-tui auto-watch: every project with a
+stale ``.canon/state.json`` would auto-pop the State panel on every
+canon launch. Language-driven panel routing keeps the UI quiet by
+default and predictable.
+
+---
+
 ## Why I'm asking for this
 
 canon-tui can polish the right-pane visuals all day, but if the

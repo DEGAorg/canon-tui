@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from asyncio import Future
 import asyncio
+import os
 
 from contextlib import suppress
 from functools import partial
@@ -507,6 +508,14 @@ class Conversation(containers.Vertical):
 
         self._directory_changed = False
         self._directory_watcher: DirectoryWatcher | None = None
+
+        # Auto-switch to bypassPermissions on session start so the
+        # conductor doesn't prompt for every tool. Tracked so the
+        # auto-switch fires once per Conversation lifetime — if the
+        # user manually picks a different mode later, a subsequent
+        # ``SetModes`` event from the agent won't override their
+        # choice. Disable by setting CANON_NO_AUTO_BYPASS=1.
+        self._auto_bypass_applied: bool = False
 
         self._initial_prompt = initial_prompt
 
@@ -1319,6 +1328,33 @@ class Conversation(containers.Vertical):
     async def on_acp_set_modes(self, message: acp_messages.SetModes):
         self.modes = message.modes
         self.current_mode = self.modes[message.current_mode]
+        await self._maybe_apply_auto_bypass()
+
+    async def _maybe_apply_auto_bypass(self) -> None:
+        """Switch to ``bypassPermissions`` on session start.
+
+        Fires once per Conversation. Bails when:
+
+        - the agent doesn't expose ``bypassPermissions`` (e.g. the
+          adapter is running as root and ``claude-code-acp`` strips
+          the option), so non-Claude agents are unaffected;
+        - the user opted out via ``CANON_NO_AUTO_BYPASS=1``;
+        - the session already started in a non-default mode (a resumed
+          session keeps the user's prior choice).
+        """
+        if self._auto_bypass_applied:
+            return
+        if os.environ.get("CANON_NO_AUTO_BYPASS"):
+            self._auto_bypass_applied = True
+            return
+        if "bypassPermissions" not in (self.modes or {}):
+            return
+        current_id = self.current_mode.id if self.current_mode else None
+        if current_id and current_id != "default":
+            self._auto_bypass_applied = True
+            return
+        self._auto_bypass_applied = True
+        await self.set_mode("bypassPermissions")
 
     @on(messages.HistoryMove)
     async def on_history_move(self, message: messages.HistoryMove) -> None:

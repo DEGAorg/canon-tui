@@ -431,9 +431,14 @@ class ProjectStatePane(Vertical):
         )
 
         # --- State section (canon build + run) ---
+        # Badge uses POLLING (not LIVE) on purpose: "live" is overloaded
+        # in canon-land — it means "live trading vs paper" at the
+        # automation level. The section's own state badge talks about
+        # data freshness, not execution mode, so we use POLLING /
+        # UPDATING / IDLE / ERROR vocabulary.
         with Vertical(id=SECTION_STATE, classes="pane-section"):
             yield SectionStatusBadge(
-                BadgeState.LIVE, id=BADGE_STATE, classes="section-badge"
+                BadgeState.POLLING, id=BADGE_STATE, classes="section-badge"
             )
             with TabbedContent(id=TABS_STATE):
                 with TabPane("State", id="tab-builder"):

@@ -41,6 +41,7 @@ class _StubModel:
     issue_number: int | None = 7
     items: list[Any] = field(default_factory=list)
     verdict: str = "running"
+    phase: str = "Running"
     plan_dir: Path = field(
         default_factory=lambda: Path("/nonexistent-stub-plan")
     )

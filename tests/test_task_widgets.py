@@ -296,6 +296,74 @@ async def test_row_selection_swaps_content_switcher(
         assert switcher.current == "detail"
 
 
+# ------------------------------------------------------------------
+# Diff-flash on changed rows
+# ------------------------------------------------------------------
+
+
+class _DiffFlashHarness(App[None]):
+    def __init__(self) -> None:
+        super().__init__()
+
+    def compose(self) -> ComposeResult:
+        yield TaskTable(id="tbl")
+
+
+@pytest.mark.asyncio
+async def test_diff_flash_marks_only_changed_cells(
+    sample_tasks: list[TaskItem],
+) -> None:
+    """Second ``set_tasks`` call flashes cells whose value changed.
+
+    The first call seeds the baseline silently — we don't want every
+    cell to flash on initial render. Mutating one task's status and
+    calling again should mark exactly that one (task_id, col_idx).
+    """
+    from dataclasses import replace
+
+    app = _DiffFlashHarness()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        tbl = app.query_one(TaskTable)
+        tbl.set_tasks(sample_tasks)
+        await pilot.pause()
+        assert tbl._flash_cells == set(), "first load must not flash"
+
+        # Flip the first task's status; everything else stays put.
+        mutated = [
+            replace(sample_tasks[0], status=ItemStatus.DONE),
+            sample_tasks[1],
+        ]
+        tbl.set_tasks(mutated)
+        await pilot.pause()
+        # Status is column 0 in the "all" set.
+        assert (sample_tasks[0].id, 0) in tbl._flash_cells
+        assert all(
+            cell[0] == sample_tasks[0].id for cell in tbl._flash_cells
+        ), "only task 101 should be flashing"
+
+
+@pytest.mark.asyncio
+async def test_diff_flash_clears_after_timeout(
+    sample_tasks: list[TaskItem],
+) -> None:
+    """Drive the clear directly to avoid sleeping for the timeout."""
+    from dataclasses import replace
+
+    app = _DiffFlashHarness()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        tbl = app.query_one(TaskTable)
+        tbl.set_tasks(sample_tasks)
+        await pilot.pause()
+        tbl.set_tasks([replace(sample_tasks[0], status=ItemStatus.DONE), sample_tasks[1]])
+        await pilot.pause()
+        assert tbl._flash_cells, "flash should be set after a diff"
+        tbl._clear_flash()
+        await pilot.pause()
+        assert tbl._flash_cells == set()
+
+
 class _DrillDownHarness(App[None]):
     """App that mounts a TaskDetail pre-populated with a task.
 

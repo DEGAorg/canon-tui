@@ -35,6 +35,12 @@ _BAR_EMPTY: Final[str] = "░"
 _DOT_ACTIVE: Final[str] = "●"
 _DOT_IDLE: Final[str] = "○"
 
+# Tick-flash duration for numeric stat changes. Long enough to register,
+# short enough that a fast stream of updates doesn't strobe.
+_TICK_FLASH_SECONDS: Final[float] = 0.7
+_TICK_UP_STYLE: Final[str] = "bold bright_green"
+_TICK_DOWN_STYLE: Final[str] = "bold bright_red"
+
 
 def _style_for(name: str) -> str:
     return CANON_STYLES.get(name, name)
@@ -61,6 +67,12 @@ class _CardBase(Static):
     def __init__(self, **kwargs: object) -> None:
         super().__init__("", **kwargs)  # type: ignore[arg-type]
         self._rendered: Text = Text()
+        # Subclasses that show a primary numeric value flip this on each
+        # ``set_data`` to indicate "value just went up / just went down".
+        # ``_build()`` paints the value with the matching style; we clear
+        # it after ``_TICK_FLASH_SECONDS`` so the colour is transient.
+        self._tick_flash: str | None = None
+        self._tick_flash_timer: object | None = None
 
     @property
     def rendered(self) -> Text:
@@ -78,6 +90,31 @@ class _CardBase(Static):
 
     def render(self) -> Text:
         return self._rendered
+
+    def _set_tick_flash(self, *, old: int, new: int) -> None:
+        """Set the tick-flash colour based on the direction of change.
+
+        Called by subclass ``set_data`` methods. No-op when the value
+        is unchanged or this is the first set (old == 0 with new == 0
+        or initial-load semantics handled at the call site).
+        """
+        if new > old:
+            self._tick_flash = _TICK_UP_STYLE
+        elif new < old:
+            self._tick_flash = _TICK_DOWN_STYLE
+        else:
+            return
+        if self._tick_flash_timer is not None:
+            self._tick_flash_timer.stop()
+        if self.is_mounted:
+            self._tick_flash_timer = self.set_timer(
+                _TICK_FLASH_SECONDS, self._clear_tick_flash
+            )
+
+    def _clear_tick_flash(self) -> None:
+        self._tick_flash = None
+        self._tick_flash_timer = None
+        self._refresh_content()
 
 
 class StatLine(_CardBase):
@@ -108,6 +145,7 @@ class StatLine(_CardBase):
         total: int,
         segments: tuple[tuple[str, int, str], ...],
     ) -> None:
+        self._set_tick_flash(old=self._total, new=total)
         self._total = total
         self._segments = segments
         self._refresh_content()
@@ -116,7 +154,10 @@ class StatLine(_CardBase):
         text = Text()
         text.append(self._label, style=_style_for("primary"))
         text.append("  ")
-        text.append(_format_int(self._total), style=_style_for("accent"))
+        text.append(
+            _format_int(self._total),
+            style=self._tick_flash or _style_for("accent"),
+        )
         text.append("\n")
 
         total = max(self._total, 0)
@@ -169,6 +210,7 @@ class Histogram(_CardBase):
         self._rendered = self._build()
 
     def set_data(self, buckets: tuple[int, ...], total: int) -> None:
+        self._set_tick_flash(old=self._total, new=total)
         self._buckets = self._normalize(buckets)
         self._total = total
         self._refresh_content()
@@ -185,7 +227,10 @@ class Histogram(_CardBase):
         text = Text()
         text.append(self._label, style=_style_for("primary"))
         text.append("  ")
-        text.append(_format_int(self._total), style=_style_for("accent"))
+        text.append(
+            _format_int(self._total),
+            style=self._tick_flash or _style_for("accent"),
+        )
         text.append("\n")
 
         peak = max(self._buckets) if self._buckets else 0

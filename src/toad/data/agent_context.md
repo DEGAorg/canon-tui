@@ -20,6 +20,10 @@ canon-ctl action "screen.show_timeline"    # Timeline / Gantt tab
 canon-ctl action "screen.show_state"
 canon-ctl action "screen.hide_state"
 
+# Outreach section (DM prospects, outreach status)
+canon-ctl action "screen.show_outreach"
+canon-ctl action "screen.hide_outreach"
+
 # Toggle the entire right pane open/closed
 canon-ctl action "screen.toggle_project_state"
 
@@ -89,10 +93,12 @@ the work? Subagent. Otherwise: `run_in_background`.
 
 ## Behavior
 
-- **Two sections:** Planning (GitHub + Timeline tabs) and State.
-  Each section can be shown or hidden independently.
+- **Three sections:** Planning (GitHub + Timeline tabs), State, and
+  Outreach. Each section can be shown or hidden independently.
 - **`show_github` / `show_timeline`** open Planning and switch to that tab.
+- **`show_outreach`** opens the Outreach section (DM prospects and status).
 - **`hide_planning`** hides the entire Planning section (both tabs).
+- **`hide_outreach`** hides the Outreach section.
 - Multiple sections can be visible at once (they share height evenly).
   Hiding all sections auto-closes the pane.
 
@@ -101,7 +107,9 @@ the work? Subagent. Otherwise: `run_in_background`.
 - User asks about PRs, plans, or GitHub status → `show_github`
 - User asks about project timeline or schedule → `show_timeline`
 - User asks about project state, build progress → `show_state`
+- User asks about outreach, DMs, or prospects → `show_outreach`
 - User asks to hide planning/github/timeline → `hide_planning`
+- User asks to hide outreach → `hide_outreach`
 - User asks to hide state → `hide_state`
 - User asks to see or hide the project panel → `toggle_project_state`
 - After updating the timeline → `refresh_timeline`

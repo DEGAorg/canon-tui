@@ -16,8 +16,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Protocol, runtime_checkable
 
+from rich.text import Text
 from textual.message import Message
 from textual.widgets import RichLog
+
+from toad.widgets.worker_log_formatter import WorkerLogFormatter
 
 
 __all__ = [
@@ -80,6 +83,7 @@ class PlanWorkerLogPane(RichLog):
         self._item_id = item_id
         self._unsubscribe: Callable[[], None] | None = None
         self._appended: list[str] = []
+        self._formatter = WorkerLogFormatter()
 
     # ------------------------------------------------------------------
     # Public API
@@ -92,6 +96,7 @@ class PlanWorkerLogPane(RichLog):
         self._teardown_subscription()
         self.clear()
         self._appended.clear()
+        self._formatter = WorkerLogFormatter()
         self._item_id = item_id
         self._setup_subscription()
 
@@ -123,7 +128,16 @@ class PlanWorkerLogPane(RichLog):
         if event.item_id != self._item_id:
             return
         self._appended.append(event.text)
-        self.write(event.text)
+        # Worker logs are streamed through the formatter: NDJSON events
+        # from `claude --output-format stream-json --verbose` become
+        # one-line transcript entries (🔧/🤖/📄/✅), and anything that
+        # isn't JSON (legacy `-p` text output, engine-emitted lines like
+        # `--- worker N exited ---`, or partial tmux teardown ANSI) is
+        # passed through. `Text.from_ansi` strips the residual control
+        # sequences so they don't render as literal `[?1006l` garbage.
+        rendered = self._formatter.feed(event.text)
+        if rendered:
+            self.write(Text.from_ansi(rendered))
 
     # ------------------------------------------------------------------
     # Internals

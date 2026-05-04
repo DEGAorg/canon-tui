@@ -110,6 +110,43 @@ class TestStatLine:
         assert "Prospects" in text
         assert "0" in text
 
+    @pytest.mark.asyncio
+    async def test_tick_flash_on_increase(self) -> None:
+        """Setting a higher total tags the stat with the up-flash style;
+        clearing the flash returns the value to the canonical accent.
+        """
+
+        def build() -> StatLine:
+            return StatLine(label="Prospects", total=10, segments=())
+
+        async with _mounted(build) as widget:
+            assert isinstance(widget, StatLine)
+            assert widget._tick_flash is None  # baseline
+            widget.set_data(total=15, segments=())
+            assert widget._tick_flash == "bold bright_green"
+            widget._clear_tick_flash()
+            assert widget._tick_flash is None
+
+    @pytest.mark.asyncio
+    async def test_tick_flash_on_decrease(self) -> None:
+        def build() -> StatLine:
+            return StatLine(label="Prospects", total=20, segments=())
+
+        async with _mounted(build) as widget:
+            assert isinstance(widget, StatLine)
+            widget.set_data(total=12, segments=())
+            assert widget._tick_flash == "bold bright_red"
+
+    @pytest.mark.asyncio
+    async def test_tick_flash_unchanged_value_no_flash(self) -> None:
+        def build() -> StatLine:
+            return StatLine(label="Prospects", total=20, segments=())
+
+        async with _mounted(build) as widget:
+            assert isinstance(widget, StatLine)
+            widget.set_data(total=20, segments=())
+            assert widget._tick_flash is None
+
 
 # ---------------------------------------------------------------------------
 # Histogram

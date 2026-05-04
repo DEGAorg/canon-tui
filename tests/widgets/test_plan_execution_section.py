@@ -41,6 +41,7 @@ class _StubModel:
     issue_number: int | None = 7
     items: list[Any] = field(default_factory=list)
     verdict: str = "running"
+    phase: str = "Running"
     plan_dir: Path = field(
         default_factory=lambda: Path("/nonexistent-stub-plan")
     )
@@ -131,6 +132,25 @@ class TestEmptyState:
             pane_ids = {pane.id for pane in tabs.query(TabPane)}
             assert EMPTY_PANE_ID in pane_ids
             assert _empty_state_statics(section)
+
+    @pytest.mark.asyncio
+    async def test_empty_pane_is_active_after_closing_last_tab(self) -> None:
+        """Regression: Textual leaves ``tabs.active`` pointing at the
+        just-removed tab id, so the freshly mounted empty pane never
+        surfaces and the user sees a blank section. Closing the last
+        plan tab must explicitly activate the empty pane.
+        """
+        app = _Harness()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            section = app.query_one(PlanExecutionSection)
+            section.open_tab("alpha")
+            await pilot.pause()
+            section.close_tab("alpha")
+            await pilot.pause()
+            await pilot.pause()  # call_after_refresh fires here
+            tabs = section.query_one("#plan-exec-tabs", TabbedContent)
+            assert tabs.active == EMPTY_PANE_ID
 
     @pytest.mark.asyncio
     async def test_placeholder_present_without_factory(self) -> None:

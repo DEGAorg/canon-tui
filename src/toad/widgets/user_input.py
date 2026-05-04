@@ -14,7 +14,7 @@ class UserInput(containers.HorizontalGroup):
 
     def compose(self) -> ComposeResult:
         yield NonSelectableLabel("❯", id="prompt")
-        yield Markdown(self.content, id="content")
+        yield Markdown(self.content.replace("\n", "  \n"), id="content")
 
     def get_block_menu(self) -> Iterable[MenuItem]:
         yield from ()

@@ -38,6 +38,7 @@ from toad.directory_watcher import DirectoryChanged, DirectoryWatcher
 from toad.widgets.plan_dep_graph import DepGraphItem, PlanDepGraph
 from toad.widgets.plan_progress import PlanProgress
 from toad.widgets.plan_worker_log_pane import PlanWorkerLogPane
+from toad.widgets.section_status_badge import BadgeState, SectionStatusBadge
 
 if TYPE_CHECKING:
     from toad.data.plan_execution_model import TerminalInfo
@@ -124,6 +125,7 @@ class PlanExecutionModel(Protocol):
     issue_number: int | None
     items: Sequence[DepGraphItem]
     verdict: str
+    phase: str
     plan_dir: Path
 
     def subscribe_log(
@@ -305,6 +307,11 @@ class PlanExecutionTab(TabPane):
                     self._compute_header_text(),
                     id="plan-exec-header-text",
                 )
+                yield SectionStatusBadge(
+                    self._badge_state_for_phase(),
+                    message=self._badge_message(),
+                    id="plan-exec-badge",
+                )
                 yield PlanProgress(
                     items=self._items,
                     id="plan-exec-donut",
@@ -335,6 +342,48 @@ class PlanExecutionTab(TabPane):
         """Return the current header string (handy for assertions)."""
         return self._compute_header_text()
 
+    # ------------------------------------------------------------------
+    # Status badge
+    # ------------------------------------------------------------------
+
+    # Phase strings come from PlanExecutionModel._derive_phase. They're
+    # stable enough to pin here — adding a new phase requires a deliberate
+    # mapping update, which is the point.
+    _PHASE_TO_STATE = {
+        "Running": BadgeState.LIVE,
+        "Review": BadgeState.UPDATING,
+        "Verify": BadgeState.UPDATING,
+        "Done": BadgeState.IDLE,
+        "Failed": BadgeState.ERROR,
+    }
+
+    def _badge_state_for_phase(self) -> BadgeState:
+        return self._PHASE_TO_STATE.get(self._model.phase, BadgeState.IDLE)
+
+    def _badge_message(self) -> str | None:
+        """Show the verdict on terminal phases, the phase label otherwise.
+
+        While the run is live, ``Running`` / ``Review`` / ``Verify`` is
+        the most informative thing to show; once the run is over, the
+        verdict (``SHIP`` / ``REVISE`` / ``FAILED``) is what the user
+        wants to see at a glance.
+        """
+        phase = self._model.phase
+        if phase in {"Done", "Failed"}:
+            verdict = (self._verdict or "").strip()
+            if verdict and verdict.lower() != "running":
+                return verdict
+        return phase or None
+
+    def _sync_badge(self, *, updated: bool = False) -> None:
+        try:
+            badge = self.query_one("#plan-exec-badge", SectionStatusBadge)
+        except Exception:
+            return
+        badge.set_state(self._badge_state_for_phase(), message=self._badge_message())
+        if updated:
+            badge.mark_updated()
+
     @property
     def selected_item_id(self) -> int | None:
         return self._selected_item_id
@@ -358,6 +407,7 @@ class PlanExecutionTab(TabPane):
         self.query_one(PlanDepGraph).set_items(self._items)
         self.query_one(PlanProgress).set_items(self._items)
         self._refresh_header()
+        self._sync_badge(updated=True)
 
     def on_plan_execution_tab_item_status_changed(
         self, event: ItemStatusChanged
@@ -375,6 +425,7 @@ class PlanExecutionTab(TabPane):
         self.query_one(PlanDepGraph).set_items(self._items)
         self.query_one(PlanProgress).set_items(self._items)
         self._refresh_header()
+        self._sync_badge(updated=True)
 
     def on_plan_execution_tab_plan_finished(self, event: PlanFinished) -> None:
         """Flip verdict on completion. Tab stays mounted."""
@@ -385,6 +436,7 @@ class PlanExecutionTab(TabPane):
         self.query_one(PlanProgress).set_items(self._items)
         self._refresh_pr_button()
         self._refresh_header()
+        self._sync_badge(updated=True)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "plan-exec-close-btn":

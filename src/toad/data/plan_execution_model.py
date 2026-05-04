@@ -1,8 +1,10 @@
 """PlanExecutionModel — watch an orchestrator plan directory.
 
-Reads ``.orchestrator/plans/<slug>/state.json`` plus per-item
-``logs/<id>.log`` files and posts the Textual messages the existing
-plan-execution widgets already handle:
+Reads ``.orchestrator/plans/<slug>/state.json`` plus per-item worker
+log files (``logs/worker-<id>.log`` written by the orchestrator engine
+via ``tmux pipe-pane``; ``logs/<id>.log`` is honoured as a legacy
+fallback) and posts the Textual messages the existing plan-execution
+widgets already handle:
 
 - :class:`toad.widgets.plan_execution_tab.PlanExecutionTab.ItemStatusChanged`
   whenever an item's ``status`` field flips,
@@ -104,6 +106,7 @@ class PlanExecutionModel:
         self._started: bool = False
 
         self._log_positions: dict[int, int] = {}
+        self._log_paths: dict[int, Path] = {}
         self._log_subscribers: dict[int, list[Callable[[str], None]]] = {}
 
         self._initial_parse()
@@ -188,7 +191,33 @@ class PlanExecutionModel:
         that item's log file until a new subscription arrives.
         """
         with self._lock:
-            self._log_subscribers.setdefault(item_id, []).append(callback)
+            existing = self._log_subscribers.setdefault(item_id, [])
+            is_first_subscriber = len(existing) == 0
+            existing.append(callback)
+
+        # Replay whatever is already on disk so a fresh subscriber sees
+        # the worker's prior conversation rather than just future diffs.
+        # Without this, navigating away from an item and back wipes the
+        # pane (the widget clears on switch) and the model — which only
+        # tails new bytes — has nothing to re-deliver, so the user loses
+        # the entire run history mid-session and after the worker exits.
+        snapshot = self._read_log_snapshot(item_id)
+        if snapshot:
+            callback(snapshot)
+        if is_first_subscriber:
+            # When the previous subscriber detached, the worker may have
+            # kept writing — leaving ``_log_positions`` lagging behind
+            # the file size. Sync to the snapshot length so the next
+            # ``poll_now`` doesn't re-deliver bytes already in the
+            # snapshot above. Other subscribers, if any, share the same
+            # position, so we only do this on the first attach.
+            log_path = self._resolve_log_path(item_id)
+            if log_path is not None:
+                try:
+                    self._log_positions[item_id] = log_path.stat().st_size
+                    self._log_paths[item_id] = log_path
+                except OSError:
+                    pass
 
         def _unsubscribe() -> None:
             with self._lock:
@@ -356,9 +385,16 @@ class PlanExecutionModel:
         with self._lock:
             ids = list(self._log_subscribers.keys())
         for item_id in ids:
-            log_path = self._plan_dir / "logs" / f"{item_id}.log"
-            if not log_path.exists():
+            log_path = self._resolve_log_path(item_id)
+            if log_path is None:
                 continue
+            previous_path = self._log_paths.get(item_id)
+            if previous_path is not None and previous_path != log_path:
+                # Engine started writing a richer file (e.g. worker-<id>.log
+                # superseded a legacy <id>.log); restart from byte 0 so we
+                # don't skip over the prefix of the new file.
+                self._log_positions[item_id] = 0
+            self._log_paths[item_id] = log_path
             pos = self._log_positions.get(item_id, 0)
             try:
                 size = log_path.stat().st_size
@@ -380,6 +416,42 @@ class PlanExecutionModel:
                 callbacks = list(self._log_subscribers.get(item_id, ()))
             for cb in callbacks:
                 cb(chunk)
+
+    def _read_log_snapshot(self, item_id: int) -> str:
+        """Return the full current contents of ``item_id``'s log, or ``""``.
+
+        Used to backfill a freshly attached subscriber so it sees the
+        worker's history. Does **not** advance ``_log_positions`` —
+        existing subscribers continue tailing from wherever they left
+        off, and the next ``poll_now`` only delivers new bytes appended
+        after this snapshot.
+        """
+        log_path = self._resolve_log_path(item_id)
+        if log_path is None:
+            return ""
+        try:
+            return log_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return ""
+
+    def _resolve_log_path(self, item_id: int) -> Path | None:
+        """Locate the log file for ``item_id``.
+
+        The orchestrator engine pipes each worker's tmux pane to
+        ``logs/worker-<id>.log`` (and emits a final summary line to the
+        same file on exit). Older runs and tests use the bare
+        ``logs/<id>.log`` form. Prefer the engine's path; fall back to
+        the legacy one so test fixtures and any pre-existing plans keep
+        working.
+        """
+        logs_dir = self._plan_dir / "logs"
+        worker_path = logs_dir / f"worker-{item_id}.log"
+        if worker_path.exists():
+            return worker_path
+        legacy_path = logs_dir / f"{item_id}.log"
+        if legacy_path.exists():
+            return legacy_path
+        return None
 
     def _read_state(self) -> dict[str, Any] | None:
         path = self._plan_dir / "state.json"

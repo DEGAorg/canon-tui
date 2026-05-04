@@ -207,23 +207,52 @@ class ProjectStatePane(Vertical):
         padding: 1 2;
     }
 
+    /* Toolbar buttons styled as bracketed chips: less chrome, more
+       terminal. Active chip flips background to the surface 50% for a
+       quiet "selected" emphasis instead of a button-shaped affordance. */
     ProjectStatePane #pane-toolbar Button {
         min-width: 10;
         height: 1;
         margin: 0 1 0 0;
         border: none;
-        background: $surface;
+        background: transparent;
         color: $text-muted;
     }
 
+    ProjectStatePane #pane-toolbar Button:hover {
+        background: $surface 50%;
+        color: $text;
+    }
+
     ProjectStatePane #pane-toolbar Button.active {
-        background: $primary 30%;
+        background: $surface 60%;
         color: $text;
         text-style: bold;
     }
 
     ProjectStatePane .pane-section {
         height: 1fr;
+    }
+
+    /* Per-section accent ribbon. The badge dock sits above the
+       TabbedContent; we colour-tag each section by its left border so
+       the eye can locate Context / Planning / State / Outreach without
+       reading the labels. Colours match the SectionStatusBadge dot
+       palette: cyan / magenta / green / yellow. */
+    ProjectStatePane #section-context {
+        border-left: tall cyan 25%;
+    }
+    ProjectStatePane #section-planning {
+        border-left: tall magenta 25%;
+    }
+    ProjectStatePane #section-state {
+        border-left: tall green 25%;
+    }
+    ProjectStatePane #section-outreach {
+        border-left: tall orange 25%;
+    }
+    ProjectStatePane #section-plan-execution {
+        border-left: tall yellow 30%;
     }
 
     ProjectStatePane .section-badge {

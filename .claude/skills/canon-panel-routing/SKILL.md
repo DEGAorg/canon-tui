@@ -111,6 +111,7 @@ Map these to `open_panel` calls in the agent prompt:
 | "open the plan"               | `plan`         | —                                       |
 | "show me the files"           | `files`        | —                                       |
 | "open the timeline"           | `timeline`     | —                                       |
+| "show me the outreach"        | `outreach`     | —                                       |
 | "hide the right panel"        | —              | send `close_panel` with `project_state` |
 
 ## Debugging

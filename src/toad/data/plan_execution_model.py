@@ -191,7 +191,33 @@ class PlanExecutionModel:
         that item's log file until a new subscription arrives.
         """
         with self._lock:
-            self._log_subscribers.setdefault(item_id, []).append(callback)
+            existing = self._log_subscribers.setdefault(item_id, [])
+            is_first_subscriber = len(existing) == 0
+            existing.append(callback)
+
+        # Replay whatever is already on disk so a fresh subscriber sees
+        # the worker's prior conversation rather than just future diffs.
+        # Without this, navigating away from an item and back wipes the
+        # pane (the widget clears on switch) and the model — which only
+        # tails new bytes — has nothing to re-deliver, so the user loses
+        # the entire run history mid-session and after the worker exits.
+        snapshot = self._read_log_snapshot(item_id)
+        if snapshot:
+            callback(snapshot)
+        if is_first_subscriber:
+            # When the previous subscriber detached, the worker may have
+            # kept writing — leaving ``_log_positions`` lagging behind
+            # the file size. Sync to the snapshot length so the next
+            # ``poll_now`` doesn't re-deliver bytes already in the
+            # snapshot above. Other subscribers, if any, share the same
+            # position, so we only do this on the first attach.
+            log_path = self._resolve_log_path(item_id)
+            if log_path is not None:
+                try:
+                    self._log_positions[item_id] = log_path.stat().st_size
+                    self._log_paths[item_id] = log_path
+                except OSError:
+                    pass
 
         def _unsubscribe() -> None:
             with self._lock:
@@ -390,6 +416,23 @@ class PlanExecutionModel:
                 callbacks = list(self._log_subscribers.get(item_id, ()))
             for cb in callbacks:
                 cb(chunk)
+
+    def _read_log_snapshot(self, item_id: int) -> str:
+        """Return the full current contents of ``item_id``'s log, or ``""``.
+
+        Used to backfill a freshly attached subscriber so it sees the
+        worker's history. Does **not** advance ``_log_positions`` —
+        existing subscribers continue tailing from wherever they left
+        off, and the next ``poll_now`` only delivers new bytes appended
+        after this snapshot.
+        """
+        log_path = self._resolve_log_path(item_id)
+        if log_path is None:
+            return ""
+        try:
+            return log_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return ""
 
     def _resolve_log_path(self, item_id: int) -> Path | None:
         """Locate the log file for ``item_id``.

@@ -56,6 +56,7 @@ class _FakeModel:
     issue_number: int | None = 42
     items: list[DepGraphItem] = field(default_factory=list)
     verdict: str = "running"
+    phase: str = "Running"
     plan_dir: Path = field(default_factory=lambda: Path("/nonexistent-fake-plan"))
     subscriptions: list[_Subscription] = field(default_factory=list)
 
@@ -228,6 +229,90 @@ class TestPlanFinishedPersists:
             # Still mounted inside the TabbedContent.
             tabs = app.query_one(TabbedContent)
             assert tab.id in {pane.id for pane in tabs.query(PlanExecutionTab)}
+
+
+# ------------------------------------------------------------------
+# Status badge
+# ------------------------------------------------------------------
+
+
+class TestStatusBadge:
+    """The plan-exec badge mirrors the model's ``phase`` value.
+
+    ``Running`` → LIVE (pulsing), ``Review``/``Verify`` → UPDATING,
+    ``Done`` → IDLE with the verdict as the message, ``Failed`` →
+    ERROR. Any other phase falls back to IDLE.
+    """
+
+    @pytest.mark.asyncio
+    async def test_running_phase_is_live(self) -> None:
+        from toad.widgets.section_status_badge import (
+            BadgeState,
+            SectionStatusBadge,
+        )
+
+        model = _FakeModel(items=_fixture_items(), phase="Running")
+        app = _Harness(model)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            badge = app.query_one("#plan-exec-badge", SectionStatusBadge)
+            assert badge.state == BadgeState.LIVE
+
+    @pytest.mark.asyncio
+    async def test_done_phase_shows_verdict(self) -> None:
+        from toad.widgets.section_status_badge import (
+            BadgeState,
+            SectionStatusBadge,
+        )
+
+        model = _FakeModel(
+            items=_fixture_items(), phase="Done", verdict="SHIP"
+        )
+        app = _Harness(model)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            badge = app.query_one("#plan-exec-badge", SectionStatusBadge)
+            assert badge.state == BadgeState.IDLE
+            assert "SHIP" in badge.render().plain
+
+    @pytest.mark.asyncio
+    async def test_failed_phase_is_error(self) -> None:
+        from toad.widgets.section_status_badge import (
+            BadgeState,
+            SectionStatusBadge,
+        )
+
+        model = _FakeModel(items=_fixture_items(), phase="Failed")
+        app = _Harness(model)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            badge = app.query_one("#plan-exec-badge", SectionStatusBadge)
+            assert badge.state == BadgeState.ERROR
+
+    @pytest.mark.asyncio
+    async def test_phase_change_propagates_through_handler(self) -> None:
+        """Updating the model's phase and posting an item-status-changed
+        event re-syncs the badge — the tab re-reads ``model.phase`` from
+        every status flip handler so phase shifts during a run land
+        without bespoke wiring.
+        """
+        from toad.widgets.section_status_badge import (
+            BadgeState,
+            SectionStatusBadge,
+        )
+
+        model = _FakeModel(items=_fixture_items(), phase="Running")
+        app = _Harness(model)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            tab = app.query_one(PlanExecutionTab)
+            badge = app.query_one("#plan-exec-badge", SectionStatusBadge)
+            assert badge.state == BadgeState.LIVE
+
+            model.phase = "Review"
+            tab.post_message(PlanExecutionTab.ItemStatusChanged(2, "review"))
+            await pilot.pause()
+            assert badge.state == BadgeState.UPDATING
 
 
 # ------------------------------------------------------------------

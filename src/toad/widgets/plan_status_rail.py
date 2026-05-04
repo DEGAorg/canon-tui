@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from rich.text import Text
 from textual.message import Message
 from textual.reactive import reactive
+from textual.timer import Timer
 from textual.widgets import Static
 
 
@@ -54,6 +55,13 @@ VERDICT_COLORS: dict[str, str] = {
 _FALLBACK_COLOR = "white"
 _FALLBACK_GLYPH = "•"
 _VERDICT_SEPARATOR = "  "
+
+# A "running" glyph alternates between two characters every
+# ``_PULSE_INTERVAL`` seconds so the rail breathes — the canonical
+# static glyph (``◉``) is the "lit" frame; the off-frame uses ``◎`` so
+# the silhouette stays the same width but the centre clears.
+_RUNNING_PULSE_GLYPH = "◎"
+_PULSE_INTERVAL = 0.7
 
 
 @dataclass(frozen=True)
@@ -97,6 +105,8 @@ class PlanStatusRail(Static):
     ) -> None:
         super().__init__(name=name, id=id, classes=classes)
         self._items: list[RailItem] = list(items) if items else []
+        self._pulse_on: bool = True
+        self._pulse_timer: Timer | None = None
         self.set_reactive(PlanStatusRail.verdict, verdict)
 
     # ------------------------------------------------------------------
@@ -106,6 +116,7 @@ class PlanStatusRail(Static):
     def set_items(self, items: list[RailItem]) -> None:
         """Replace the rail's items and re-render."""
         self._items = list(items)
+        self._sync_pulse_timer()
         self.refresh()
 
     def set_verdict(self, verdict: str) -> None:
@@ -151,6 +162,7 @@ class PlanStatusRail(Static):
             return
         existing = self._items[position]
         self._items[position] = RailItem(id=existing.id, status=event.status)
+        self._sync_pulse_timer()
         self.refresh()
 
     # ------------------------------------------------------------------
@@ -164,8 +176,39 @@ class PlanStatusRail(Static):
         return self._build_label()
 
     # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+
+    def on_mount(self) -> None:
+        self._sync_pulse_timer()
+
+    def on_unmount(self) -> None:
+        if self._pulse_timer is not None:
+            self._pulse_timer.stop()
+            self._pulse_timer = None
+
+    # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
+
+    def _has_running_item(self) -> bool:
+        return any(item.status == "running" for item in self._items)
+
+    def _sync_pulse_timer(self) -> None:
+        """Start the pulse timer iff at least one item is currently
+        running. Idle plans don't waste a tick.
+        """
+        wants_pulse = self._has_running_item()
+        if wants_pulse and self._pulse_timer is None:
+            self._pulse_timer = self.set_interval(_PULSE_INTERVAL, self._toggle_pulse)
+        elif not wants_pulse and self._pulse_timer is not None:
+            self._pulse_timer.stop()
+            self._pulse_timer = None
+            self._pulse_on = True  # leave the canonical glyph showing
+
+    def _toggle_pulse(self) -> None:
+        self._pulse_on = not self._pulse_on
+        self.refresh()
 
     def _index_of(self, item_id: int) -> int | None:
         for index, item in enumerate(self._items):
@@ -176,7 +219,10 @@ class PlanStatusRail(Static):
     def _build_label(self) -> Text:
         label = Text()
         for index, item in enumerate(self._items):
-            glyph = STATUS_GLYPHS.get(item.status, _FALLBACK_GLYPH)
+            if item.status == "running" and not self._pulse_on:
+                glyph = _RUNNING_PULSE_GLYPH
+            else:
+                glyph = STATUS_GLYPHS.get(item.status, _FALLBACK_GLYPH)
             color = STATUS_COLORS.get(item.status, _FALLBACK_COLOR)
             if index > 0:
                 label.append(" ")

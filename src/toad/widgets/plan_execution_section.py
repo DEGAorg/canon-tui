@@ -301,7 +301,13 @@ class PlanExecutionSection(Vertical):
         tabs = self.query_one("#plan-exec-tabs", TabbedContent)
         tabs.remove_pane(self._tab_id(slug))
         if not self._open_slugs:
+            # Closing the last plan tab: Textual leaves ``tabs.active``
+            # pointing at the just-removed tab id, so the freshly mounted
+            # empty pane never surfaces and the user sees a blank section
+            # ("I close with X and don't see the plans"). Re-add and
+            # explicitly activate the empty pane after the layout settles.
             tabs.add_pane(self._build_empty_pane(self._listed_plans))
+            self.call_after_refresh(self._activate, EMPTY_PANE_ID)
 
     # ------------------------------------------------------------------
     # Empty-state list — open / mark-crashed / remove buttons

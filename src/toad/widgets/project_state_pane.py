@@ -41,6 +41,7 @@ from toad.widgets.outreach_cards import AccountDot, Histogram, RankedBar, StatLi
 from toad.widgets.plan import Plan
 from toad.widgets.plan_execution_section import ModelFactory, PlanExecutionSection
 from toad.widgets.project_directory_tree import ProjectDirectoryTree
+from toad.widgets.section_status_badge import BadgeState, SectionStatusBadge
 from toad.widgets.subagent_tab_section import AgentFactory, SubagentTabSection
 from toad.widgets.task_detail import TaskDetail
 from toad.widgets.task_table import TaskTable
@@ -74,12 +75,26 @@ def _read_timeline_config(
     return None
 
 
-# Section IDs — used as TabbedContent widget IDs and toolbar button suffix
+# Section IDs — identify the wrapper container (Vertical) for each
+# section so toggling display on the section also hides its status
+# badge. The inner ``TabbedContent`` gets a separate ``tabs-<name>``
+# id so event selectors (``@on(TabbedContent.TabActivated, …)``) still
+# fire on the right widget.
 SECTION_CONTEXT = "section-context"
 SECTION_PLANNING = "section-planning"
 SECTION_STATE = "section-state"
 SECTION_OUTREACH = "section-outreach"
 SECTION_SUBAGENTS = SubagentTabSection.SECTION_ID
+
+TABS_CONTEXT = "tabs-context"
+TABS_PLANNING = "tabs-planning"
+TABS_STATE = "tabs-state"
+TABS_OUTREACH = "tabs-outreach"
+
+BADGE_CONTEXT = "badge-context"
+BADGE_PLANNING = "badge-planning"
+BADGE_STATE = "badge-state"
+BADGE_OUTREACH = "badge-outreach"
 
 OUTREACH_REFRESH_INTERVAL = 30
 
@@ -211,6 +226,13 @@ class ProjectStatePane(Vertical):
         height: 1fr;
     }
 
+    ProjectStatePane .section-badge {
+        dock: top;
+        height: 1;
+        padding: 0 1;
+        background: $surface 30%;
+    }
+
     ProjectStatePane TabPane {
         padding: 0 1;
     }
@@ -322,38 +344,48 @@ class ProjectStatePane(Vertical):
             )
 
         # --- Context section (plan + files) ---
-        with TabbedContent(id=SECTION_CONTEXT, classes="pane-section"):
-            with TabPane("Plan", id="tab-plan"):
-                yield Plan([], id="pane-plan")
-            with TabPane("Files", id="tab-files"):
-                yield ProjectDirectoryTree(
-                    self._project_path,
-                    id="project_directory_tree",
-                )
+        with Vertical(id=SECTION_CONTEXT, classes="pane-section"):
+            yield SectionStatusBadge(
+                BadgeState.IDLE, id=BADGE_CONTEXT, classes="section-badge"
+            )
+            with TabbedContent(id=TABS_CONTEXT):
+                with TabPane("Plan", id="tab-plan"):
+                    yield Plan([], id="pane-plan")
+                with TabPane("Files", id="tab-files"):
+                    yield ProjectDirectoryTree(
+                        self._project_path,
+                        id="project_directory_tree",
+                    )
 
         # --- Planning section: Board / Timeline.
         # Plans and PRs are now chip filters on the Board, not separate tabs.
-        with TabbedContent(id=SECTION_PLANNING, classes="pane-section"):
-            with TabPane("Board", id="tab-tasks"):
-                with ContentSwitcher(initial="tasks-list-view", id="tasks-switcher"):
-                    with Vertical(id="tasks-list-view"):
-                        yield FilterToolbar(id="task-filter-toolbar")
-                        yield Static("", id="tasks-status")
-                        yield TaskTable(id="task-table")
-                    with Vertical(id="tasks-detail-view"):
-                        with Horizontal(id="tasks-breadcrumb"):
-                            yield Button(
-                                "← Back",
-                                id="tasks-back-btn",
-                                tooltip="Return to the task list (Esc)",
-                            )
-                            yield Static(
-                                "",
-                                id="tasks-breadcrumb-label",
-                            )
-                        yield TaskDetail(id="task-detail")
-            with TabPane("Timeline", id="tab-timeline"):
-                yield GanttTimeline(id="pane-gantt")
+        with Vertical(id=SECTION_PLANNING, classes="pane-section"):
+            yield SectionStatusBadge(
+                BadgeState.POLLING, id=BADGE_PLANNING, classes="section-badge"
+            )
+            with TabbedContent(id=TABS_PLANNING):
+                with TabPane("Board", id="tab-tasks"):
+                    with ContentSwitcher(
+                        initial="tasks-list-view", id="tasks-switcher"
+                    ):
+                        with Vertical(id="tasks-list-view"):
+                            yield FilterToolbar(id="task-filter-toolbar")
+                            yield Static("", id="tasks-status")
+                            yield TaskTable(id="task-table")
+                        with Vertical(id="tasks-detail-view"):
+                            with Horizontal(id="tasks-breadcrumb"):
+                                yield Button(
+                                    "← Back",
+                                    id="tasks-back-btn",
+                                    tooltip="Return to the task list (Esc)",
+                                )
+                                yield Static(
+                                    "",
+                                    id="tasks-breadcrumb-label",
+                                )
+                            yield TaskDetail(id="task-detail")
+                with TabPane("Timeline", id="tab-timeline"):
+                    yield GanttTimeline(id="pane-gantt")
 
         # Canon state watcher (invisible, drives State view)
         yield CanonStateWidget(
@@ -370,21 +402,29 @@ class ProjectStatePane(Vertical):
         )
 
         # --- State section (canon build + run) ---
-        with TabbedContent(id=SECTION_STATE, classes="pane-section"):
-            with TabPane("State", id="tab-builder"):
-                yield BuilderView(id="builder-view")
+        with Vertical(id=SECTION_STATE, classes="pane-section"):
+            yield SectionStatusBadge(
+                BadgeState.LIVE, id=BADGE_STATE, classes="section-badge"
+            )
+            with TabbedContent(id=TABS_STATE):
+                with TabPane("State", id="tab-builder"):
+                    yield BuilderView(id="builder-view")
 
         # --- Outreach section (conditional) ---
         if self._outreach_provider is not None:
-            with TabbedContent(id=SECTION_OUTREACH, classes="pane-section"):
-                with TabPane("Outreach", id="tab-outreach"):
-                    with Vertical(id="outreach-container"):
-                        yield StatLine("Prospects", id="outreach-prospects")
-                        yield Histogram("Sends · 24h", id="outreach-sends")
-                        yield RankedBar(
-                            "Hackathons (top 5)", id="outreach-hackathons"
-                        )
-                        yield Vertical(id="outreach-accounts")
+            with Vertical(id=SECTION_OUTREACH, classes="pane-section"):
+                yield SectionStatusBadge(
+                    BadgeState.POLLING, id=BADGE_OUTREACH, classes="section-badge"
+                )
+                with TabbedContent(id=TABS_OUTREACH):
+                    with TabPane("Outreach", id="tab-outreach"):
+                        with Vertical(id="outreach-container"):
+                            yield StatLine("Prospects", id="outreach-prospects")
+                            yield Histogram("Sends · 24h", id="outreach-sends")
+                            yield RankedBar(
+                                "Hackathons (top 5)", id="outreach-hackathons"
+                            )
+                            yield Vertical(id="outreach-accounts")
 
     def on_mount(self) -> None:
         # All sections start hidden; the user opens one via toolbar / chat.
@@ -437,7 +477,7 @@ class ProjectStatePane(Vertical):
             self._outreach_timer.stop()
             self._outreach_timer = None
 
-    @on(TabbedContent.TabActivated, f"#{SECTION_PLANNING}")
+    @on(TabbedContent.TabActivated, f"#{TABS_PLANNING}")
     def _on_planning_tab_activated(
         self, event: TabbedContent.TabActivated
     ) -> None:
@@ -744,6 +784,33 @@ class ProjectStatePane(Vertical):
         log.warning("Tab %r not found in ProjectStatePane", tab_id)
 
     # ------------------------------------------------------------------
+    # Section status badges
+    # ------------------------------------------------------------------
+
+    def _mark_badge(
+        self,
+        badge_id: str,
+        *,
+        state: BadgeState | None = None,
+        message: str | None = None,
+        updated: bool = False,
+    ) -> None:
+        """Update a section's status badge.
+
+        ``updated=True`` calls ``mark_updated()`` so the relative
+        timestamp resets. Silent if the badge isn't mounted yet (early
+        refresh races) or doesn't exist (Outreach is conditional).
+        """
+        try:
+            badge = self.query_one(f"#{badge_id}", SectionStatusBadge)
+        except NoMatches:
+            return
+        if state is not None:
+            badge.set_state(state, message=message)
+        if updated:
+            badge.mark_updated()
+
+    # ------------------------------------------------------------------
     # Provider setup
     # ------------------------------------------------------------------
 
@@ -767,6 +834,7 @@ class ProjectStatePane(Vertical):
         """Fetch timeline via provider, transform, and update widget."""
         if self._provider is None:
             return
+        self._mark_badge(BADGE_PLANNING, state=BadgeState.UPDATING)
         try:
             milestones = await self._provider.fetch_milestones()
             items = await self._provider.fetch_items()
@@ -775,6 +843,11 @@ class ProjectStatePane(Vertical):
             gantt.timeline_data = timeline
         except Exception as exc:
             log.warning("Timeline fetch failed: %s", exc)
+            self._mark_badge(
+                BADGE_PLANNING, state=BadgeState.ERROR, message=str(exc)[:30]
+            )
+            return
+        self._mark_badge(BADGE_PLANNING, state=BadgeState.POLLING, updated=True)
 
     def refresh_timeline(self) -> None:
         """Re-fetch timeline data. Called via socket controller."""
@@ -789,14 +862,20 @@ class ProjectStatePane(Vertical):
         """Fetch an outreach snapshot and render it into the cards."""
         if self._outreach_provider is None:
             return
+        self._mark_badge(BADGE_OUTREACH, state=BadgeState.UPDATING)
         try:
             if not await self._outreach_provider.available():
+                self._mark_badge(BADGE_OUTREACH, state=BadgeState.OFFLINE)
                 return
             snapshot = await self._outreach_provider.snapshot()
         except Exception as exc:
             log.warning("Outreach fetch failed: %s", exc)
+            self._mark_badge(
+                BADGE_OUTREACH, state=BadgeState.ERROR, message=str(exc)[:30]
+            )
             return
         self._render_outreach(snapshot)
+        self._mark_badge(BADGE_OUTREACH, state=BadgeState.POLLING, updated=True)
 
     def _render_outreach(self, snapshot: OutreachSnapshot) -> None:
         """Push a snapshot into the 4 outreach cards."""
@@ -860,17 +939,23 @@ class ProjectStatePane(Vertical):
     async def _fetch_tasks(self) -> None:
         if self._task_provider is None:
             self._set_tasks_status("No task provider configured.", error=True)
+            self._mark_badge(BADGE_PLANNING, state=BadgeState.OFFLINE)
             return
         self._set_tasks_status("Loading tasks…")
+        self._mark_badge(BADGE_PLANNING, state=BadgeState.UPDATING)
         try:
             tasks = await self._task_provider.fetch_tasks()
         except Exception as exc:
             log.warning("Task fetch failed: %s", exc)
             self._set_tasks_status(f"Task fetch failed: {exc}", error=True)
+            self._mark_badge(
+                BADGE_PLANNING, state=BadgeState.ERROR, message=str(exc)[:30]
+            )
             return
         self._all_tasks = tasks
         self._sync_milestone_options(tasks)
         self._apply_filters()
+        self._mark_badge(BADGE_PLANNING, state=BadgeState.POLLING, updated=True)
 
     def _set_tasks_status(self, message: str, *, error: bool = False) -> None:
         """Update the inline status label above the table."""
@@ -1015,10 +1100,11 @@ class ProjectStatePane(Vertical):
 
     def _is_tasks_tab_active(self) -> bool:
         try:
-            tc = self.query_one(f"#{SECTION_PLANNING}", TabbedContent)
+            section = self.query_one(f"#{SECTION_PLANNING}")
+            tc = self.query_one(f"#{TABS_PLANNING}", TabbedContent)
         except NoMatches:
             return False
-        return tc.display and tc.active == "tab-tasks"
+        return section.display and tc.active == "tab-tasks"
 
     def action_refresh_tasks(self) -> None:
         if not self._is_tasks_tab_active():

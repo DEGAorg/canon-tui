@@ -197,7 +197,6 @@ class ProjectStatePane(Vertical):
     DEFAULT_CSS = """
     ProjectStatePane {
         display: none;
-        width: 50%;
         border-left: tall $primary 30%;
     }
 

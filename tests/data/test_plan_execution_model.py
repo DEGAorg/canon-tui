@@ -416,6 +416,90 @@ class TestPlanFinished:
         assert finished[0].verdict == "SHIP"
         assert model.verdict == "SHIP"
 
+    def test_no_premature_finished_when_verdict_set_before_status(
+        self, plan_dir: Path
+    ) -> None:
+        """Regression: the engine writes ``finalReview.result = "SHIP"``
+        before setting ``status = "completed"``. The model must NOT fire
+        ``PlanFinished`` until ``status`` is actually terminal —
+        otherwise the tab badge freezes on "running" because the later
+        poll (with ``status = "completed"``) is suppressed by the
+        ``_finished_emitted`` guard.
+        """
+        done_items = [
+            {"id": 1, "description": "alpha", "deps": [], "status": "done"},
+            {"id": 2, "description": "beta", "deps": [1], "status": "done"},
+        ]
+        target = _Recorder()
+        model = PlanExecutionModel(plan_dir, target=target, poll=True)
+        model.start()
+        try:
+            # Step 1: engine writes finalReview.result but status is
+            # still "running" (review just finished, verify not started).
+            payload_review_done = _state_payload(items=done_items)
+            payload_review_done["finalReview"] = {
+                "result": "SHIP",
+                "status": "done",
+            }
+            # status stays default (no "status" key → model treats as "running")
+            payload_review_done.pop("status", None)
+            _write_state(plan_dir, payload_review_done)
+            model.poll_now()
+
+            premature = [
+                m
+                for m in target.messages
+                if isinstance(m, PlanExecutionTab.PlanFinished)
+            ]
+            assert premature == [], (
+                "PlanFinished must not fire before status is terminal"
+            )
+            assert model.verdict == "SHIP"
+            assert model.phase == "Running"
+
+            # Step 2: engine sets status = "verifying".
+            payload_verifying = dict(payload_review_done)
+            payload_verifying["status"] = "verifying"
+            payload_verifying["verification"] = {
+                "status": "running",
+                "uncheckedCount": 2,
+            }
+            _write_state(plan_dir, payload_verifying)
+            model.poll_now()
+
+            still_premature = [
+                m
+                for m in target.messages
+                if isinstance(m, PlanExecutionTab.PlanFinished)
+            ]
+            assert still_premature == [], (
+                "PlanFinished must not fire during verification"
+            )
+            assert model.phase == "Verify"
+
+            # Step 3: engine writes status = "completed".
+            payload_completed = _state_payload(
+                items=done_items, verdict="SHIP"
+            )
+            payload_completed["verification"] = {
+                "status": "passed",
+                "uncheckedCount": 0,
+            }
+            _write_state(plan_dir, payload_completed)
+            model.poll_now()
+
+            finished = [
+                m
+                for m in target.messages
+                if isinstance(m, PlanExecutionTab.PlanFinished)
+            ]
+            assert len(finished) == 1
+            assert finished[0].verdict == "SHIP"
+            assert model.phase == "Done"
+            assert model.status == "completed"
+        finally:
+            model.stop()
+
     def test_emits_at_most_once_per_terminal_verdict(self, plan_dir: Path) -> None:
         target = _Recorder()
         model = PlanExecutionModel(plan_dir, target=target, poll=True)

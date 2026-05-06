@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### Changed
+- Right-pane width keybindings + agentic control (`20260505-pane-width`) — 2026-05-06
+
 - Live updates for PlanExecutionTab — directory watch + interval backstop (`20260427-plan-tab-live-updates`) — 2026-04-27
 
 - Canon TUI — bootstrap PlanExecutionModel + auto-open plan tab (`20260427-plan-execution-bootstrap`) — 2026-04-27

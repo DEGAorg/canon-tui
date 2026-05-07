@@ -643,6 +643,117 @@ def verify_outreach(verbose: bool = False) -> bool:
     return len(errors) == 0, errors, results
 
 
+def verify_growth(verbose: bool = False) -> bool:
+    """Verify the Growth card widgets mount and render.
+
+    Uses synthetic data — does not require the private ``dega_growth``
+    extension or live Sheets credentials.
+    """
+    from textual.app import App, ComposeResult
+    from textual.containers import Vertical
+
+    from toad.widgets.growth_cards import (
+        ObjectivesCard,
+        RepliesCard,
+        SendsCard,
+        TargetsCard,
+    )
+
+    errors: list[str] = []
+    results: dict[str, object] = {}
+
+    class GrowthHarness(App[None]):
+        CSS = "Screen { overflow: hidden; }"
+
+        def compose(self) -> ComposeResult:
+            with Vertical(id="growth-container"):
+                yield ObjectivesCard(
+                    objectives=(
+                        (
+                            "hackathon-may-2026",
+                            "Hackathon (May 2026)",
+                            "2026-05-15",
+                            (
+                                ("scrape uniclubs", "done", None, None),
+                                ("send DMs", "in_progress", 12, 50),
+                                ("collect replies", "pending", None, None),
+                            ),
+                        ),
+                    ),
+                    id="objectives",
+                )
+                yield TargetsCard(
+                    rows=(
+                        ("uniclubs", 0),
+                        ("discords", 0),
+                        ("telegrams", 0),
+                    ),
+                    id="targets",
+                )
+                yield SendsCard(total=0, id="sends")
+                yield RepliesCard(total=0, id="replies")
+
+    async def _run() -> None:
+        app = GrowthHarness()
+        async with app.run_test(size=(80, 20)) as pilot:
+            await pilot.pause()
+            obj = app.query_one("#objectives", ObjectivesCard)
+            tgt = app.query_one("#targets", TargetsCard)
+            snd = app.query_one("#sends", SendsCard)
+            rpl = app.query_one("#replies", RepliesCard)
+
+            results["objectives_text"] = obj.rendered.plain[:60]
+            results["targets_text"] = tgt.rendered.plain[:60]
+            results["sends_text"] = snd.rendered.plain
+            results["replies_text"] = rpl.rendered.plain
+
+            if "Hackathon" not in obj.rendered.plain:
+                errors.append("ObjectivesCard did not render objective title")
+            if "uniclubs" not in tgt.rendered.plain:
+                errors.append("TargetsCard did not render channel labels")
+            if "Sends" not in snd.rendered.plain:
+                errors.append("SendsCard did not render its label")
+            if "Replies" not in rpl.rendered.plain:
+                errors.append("RepliesCard did not render its label")
+
+    asyncio.run(_run())
+
+    import sys
+
+    from toad.growth.registry import discover
+
+    ext_module = "toad.extensions.dega_growth"
+    saved_module = sys.modules.pop(ext_module, None)
+    saved_inner = sys.modules.pop(f"{ext_module}.dega_growth", None)
+    real_import = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __builtins__["__import__"]  # type: ignore[index]
+
+    def _block_import(name: str, *a: object, **kw: object) -> object:
+        if name == ext_module or name.startswith(ext_module + "."):
+            raise ImportError(f"simulated missing submodule: {name}")
+        return real_import(name, *a, **kw)  # type: ignore[misc]
+
+    import builtins
+
+    builtins.__import__ = _block_import  # type: ignore[assignment]
+    try:
+        provider = discover()
+        results["discover_none_when_module_absent"] = provider is None
+        if provider is not None:
+            errors.append("discover() returned non-None with submodule blocked")
+    finally:
+        builtins.__import__ = real_import  # type: ignore[assignment]
+        if saved_module is not None:
+            sys.modules[ext_module] = saved_module
+        if saved_inner is not None:
+            sys.modules[f"{ext_module}.dega_growth"] = saved_inner
+
+    if verbose:
+        for key, val in results.items():
+            console.print(f"  {key}: {val}")
+
+    return len(errors) == 0, errors, results
+
+
 def verify_plan_execution(verbose: bool = False) -> bool:
     """Verify ProjectStatePane auto-opens a plan tab on in-session arrival.
 
@@ -859,6 +970,9 @@ def verify_imports(verbose: bool = False) -> bool:
         "toad.outreach.protocol",
         "toad.outreach.registry",
         "toad.widgets.outreach_cards",
+        "toad.growth.protocol",
+        "toad.growth.registry",
+        "toad.widgets.growth_cards",
         "toad.widgets.plan_dep_graph",
         "toad.widgets.plan_status_rail",
         "toad.widgets.plan_worker_log_pane",
@@ -886,6 +1000,7 @@ def main() -> None:
             "tasks",
             "subagents",
             "outreach",
+            "growth",
             "plan-execution",
             "live",
             "all",
@@ -901,6 +1016,7 @@ def main() -> None:
         "tasks": verify_tasks,
         "subagents": verify_subagents,
         "outreach": verify_outreach,
+        "growth": verify_growth,
         "plan-execution": verify_plan_execution,
     }
     # Live probe only runs when explicitly requested — it hits the network.

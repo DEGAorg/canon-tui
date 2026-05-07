@@ -31,6 +31,12 @@ dependencies = [
 outreach = [
     "psycopg[binary]>=3.2",
 ]
+growth = [
+    "google-api-python-client>=2.130",
+    "google-auth>=2.30",
+    "python-dotenv>=1.0",
+    "python-frontmatter>=1.1",
+]
 
 [project.urls]
 Homepage = "https://github.com/DEGAorg/canon-tui"
@@ -41,6 +47,9 @@ Changelog = "https://github.com/DEGAorg/canon-tui/blob/main/CHANGELOG.md"
 [tool.uv.workspace]
 members = [
     "toad",
+]
+exclude = [
+    "src/toad/extensions/*",
 ]
 
 [tool.uv.sources]

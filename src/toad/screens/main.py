@@ -349,6 +349,14 @@ class MainScreen(Screen, can_focus=False):
         """
         self._show_section_tab("section-outreach", "tab-outreach")
 
+    def action_show_growth(self) -> None:
+        """Open pane and show Growth section.
+
+        No-op when the private dega_growth extension is not installed —
+        the section isn't mounted so ``show_section`` silently returns.
+        """
+        self._show_section_tab("section-growth", "tab-growth")
+
     def _hide_section(self, section_id: str) -> None:
         """Hide a section by ID."""
         pane = self.query_one("#project_state_pane", ProjectStatePane)
@@ -373,6 +381,10 @@ class MainScreen(Screen, can_focus=False):
     def action_hide_outreach(self) -> None:
         """Hide the Outreach section."""
         self._hide_section("section-outreach")
+
+    def action_hide_growth(self) -> None:
+        """Hide the Growth section."""
+        self._hide_section("section-growth")
 
     # ------------------------------------------------------------------
     # Canon auto-show logic

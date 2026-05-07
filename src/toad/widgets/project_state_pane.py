@@ -25,6 +25,8 @@ from textual.widgets import (
     TabPane,
 )
 
+from toad.growth.protocol import GrowthInfoProvider, GrowthSnapshot
+from toad.growth.registry import discover as discover_growth
 from toad.outreach.protocol import OutreachInfoProvider, OutreachSnapshot
 from toad.outreach.registry import discover as discover_outreach
 from toad.widgets.builder_view import BuilderView
@@ -37,6 +39,12 @@ from toad.widgets.github_views.github_timeline_provider import (
 from toad.widgets.github_views.task_provider import TaskItem, TaskProvider
 from toad.widgets.github_views.timeline_data import build_timeline
 from toad.widgets.orchestrator_state import OrchestratorStateWidget
+from toad.widgets.growth_cards import (
+    ObjectivesCard,
+    RepliesCard,
+    SendsCard,
+    TargetsCard,
+)
 from toad.widgets.outreach_cards import AccountDot, Histogram, RankedBar, StatLine
 from toad.widgets.plan import Plan
 from toad.widgets.plan_execution_section import ModelFactory, PlanExecutionSection
@@ -88,19 +96,23 @@ SECTION_CONTEXT = "section-context"
 SECTION_PLANNING = "section-planning"
 SECTION_STATE = "section-state"
 SECTION_OUTREACH = "section-outreach"
+SECTION_GROWTH = "section-growth"
 SECTION_SUBAGENTS = SubagentTabSection.SECTION_ID
 
 TABS_CONTEXT = "tabs-context"
 TABS_PLANNING = "tabs-planning"
 TABS_STATE = "tabs-state"
 TABS_OUTREACH = "tabs-outreach"
+TABS_GROWTH = "tabs-growth"
 
 BADGE_CONTEXT = "badge-context"
 BADGE_PLANNING = "badge-planning"
 BADGE_STATE = "badge-state"
 BADGE_OUTREACH = "badge-outreach"
+BADGE_GROWTH = "badge-growth"
 
 OUTREACH_REFRESH_INTERVAL = 30
+GROWTH_REFRESH_INTERVAL = 60
 
 
 @dataclass
@@ -144,6 +156,7 @@ PANEL_ROUTES: dict[str, tuple[str, str]] = {
     "state": (SECTION_STATE, "tab-builder"),
     "builder": (SECTION_STATE, "tab-builder"),
     "outreach": (SECTION_OUTREACH, "tab-outreach"),
+    "growth": (SECTION_GROWTH, "tab-growth"),
     # Plan execution: dynamic tab-per-slug, so the tab id is the
     # section's stable empty-pane id. The pane handler treats this
     # as "show the section, surface the running-plans list".
@@ -255,6 +268,9 @@ class ProjectStatePane(Vertical):
     ProjectStatePane #section-outreach {
         border-left: tall orange 25%;
     }
+    ProjectStatePane #section-growth {
+        border-left: tall purple 30%;
+    }
     ProjectStatePane #section-plan-execution {
         border-left: tall yellow 30%;
     }
@@ -347,9 +363,11 @@ class ProjectStatePane(Vertical):
         self._refresh_timer: Timer | None = None
         self._tasks_refresh_timer: Timer | None = None
         self._outreach_timer: Timer | None = None
+        self._growth_timer: Timer | None = None
         self._provider = self._make_provider()
         self._task_provider = self._make_task_provider()
         self._outreach_provider: OutreachInfoProvider | None = discover_outreach()
+        self._growth_provider: GrowthInfoProvider | None = discover_growth()
         self._all_tasks: list[TaskItem] = []
         self._filter_state = FilterState()
         self._selected_task_id: str | None = None
@@ -358,6 +376,8 @@ class ProjectStatePane(Vertical):
         self._sections: list[_SectionDef] = list(SECTIONS)
         if self._outreach_provider is not None:
             self._sections.append(_SectionDef(SECTION_OUTREACH, "Outreach"))
+        if self._growth_provider is not None:
+            self._sections.append(_SectionDef(SECTION_GROWTH, "Growth"))
         self._plan_exec_section: PlanExecutionSection | None = None
         self._plan_model_factory: ModelFactory | None = None
         self._plan_agent_getter: Callable[[], str] | None = None
@@ -464,6 +484,20 @@ class ProjectStatePane(Vertical):
                             )
                             yield Vertical(id="outreach-accounts")
 
+        # --- Growth section (conditional) ---
+        if self._growth_provider is not None:
+            with Vertical(id=SECTION_GROWTH, classes="pane-section"):
+                yield SectionStatusBadge(
+                    BadgeState.POLLING, id=BADGE_GROWTH, classes="section-badge"
+                )
+                with TabbedContent(id=TABS_GROWTH):
+                    with TabPane("Growth", id="tab-growth"):
+                        with Vertical(id="growth-container"):
+                            yield ObjectivesCard(id="growth-objectives")
+                            yield TargetsCard(id="growth-targets")
+                            yield SendsCard(id="growth-sends")
+                            yield RepliesCard(id="growth-replies")
+
     def on_mount(self) -> None:
         # All sections start hidden; the user opens one via toolbar / chat.
         for sec in self._sections:
@@ -478,6 +512,7 @@ class ProjectStatePane(Vertical):
             self._stop_timeline_timer()
             self._stop_tasks_timer()
             self._stop_outreach_timer()
+            self._stop_growth_timer()
 
     def _sync_timeline_timer(self, section_id: str, *, visible: bool) -> None:
         """Start/stop the timeline refresh timer when the Planning section toggles."""
@@ -514,6 +549,24 @@ class ProjectStatePane(Vertical):
         if self._outreach_timer is not None:
             self._outreach_timer.stop()
             self._outreach_timer = None
+
+    def _sync_growth_timer(self, section_id: str, *, visible: bool) -> None:
+        """Start/stop the Growth refresh timer when its section toggles."""
+        if section_id != SECTION_GROWTH or self._growth_provider is None:
+            return
+        if visible:
+            self._fetch_growth()
+            if self._growth_timer is None:
+                self._growth_timer = self.set_interval(
+                    GROWTH_REFRESH_INTERVAL, self._fetch_growth
+                )
+        else:
+            self._stop_growth_timer()
+
+    def _stop_growth_timer(self) -> None:
+        if self._growth_timer is not None:
+            self._growth_timer.stop()
+            self._growth_timer = None
 
     @on(TabbedContent.TabActivated, f"#{TABS_PLANNING}")
     def _on_planning_tab_activated(
@@ -599,6 +652,7 @@ class ProjectStatePane(Vertical):
         self._sync_toolbar()
         self._sync_timeline_timer(section_id, visible=True)
         self._sync_outreach_timer(section_id, visible=True)
+        self._sync_growth_timer(section_id, visible=True)
 
     def show_single_section(self, section_id: str) -> None:
         """Show ``section_id`` and hide every other section (accordion).
@@ -621,6 +675,7 @@ class ProjectStatePane(Vertical):
             widget.display = visible
             self._sync_timeline_timer(sec.section_id, visible=visible)
             self._sync_outreach_timer(sec.section_id, visible=visible)
+            self._sync_growth_timer(sec.section_id, visible=visible)
         self._sync_toolbar()
 
     def hide_section(self, section_id: str) -> None:
@@ -632,6 +687,7 @@ class ProjectStatePane(Vertical):
         self._sync_toolbar()
         self._sync_timeline_timer(section_id, visible=False)
         self._sync_outreach_timer(section_id, visible=False)
+        self._sync_growth_timer(section_id, visible=False)
 
     def toggle_section(self, section_id: str) -> None:
         """Toggle a section's visibility."""
@@ -640,6 +696,7 @@ class ProjectStatePane(Vertical):
         self._sync_toolbar()
         self._sync_timeline_timer(section_id, visible=widget.display)
         self._sync_outreach_timer(section_id, visible=widget.display)
+        self._sync_growth_timer(section_id, visible=widget.display)
 
     def hide_all_sections(self) -> None:
         """Hide every section."""
@@ -959,6 +1016,63 @@ class ProjectStatePane(Vertical):
                         last_sent=acct.last_sent_relative,
                     )
                 )
+
+    # ------------------------------------------------------------------
+    # Growth fetch — async provider pipeline
+    # ------------------------------------------------------------------
+
+    @work(exclusive=True, exit_on_error=False, group="fetch-growth")
+    async def _fetch_growth(self) -> None:
+        """Fetch a growth snapshot and render it into the cards."""
+        if self._growth_provider is None:
+            return
+        self._mark_badge(BADGE_GROWTH, state=BadgeState.UPDATING)
+        try:
+            if not await self._growth_provider.available():
+                self._mark_badge(BADGE_GROWTH, state=BadgeState.OFFLINE)
+                return
+            snapshot = await self._growth_provider.snapshot()
+        except Exception as exc:
+            log.warning("Growth fetch failed: %s", exc)
+            self._mark_badge(
+                BADGE_GROWTH, state=BadgeState.ERROR, message=str(exc)[:30]
+            )
+            return
+        self._render_growth(snapshot)
+        self._mark_badge(BADGE_GROWTH, state=BadgeState.POLLING, updated=True)
+
+    def _render_growth(self, snapshot: GrowthSnapshot) -> None:
+        """Push a snapshot into the four growth cards."""
+        try:
+            objectives = self.query_one("#growth-objectives", ObjectivesCard)
+            targets = self.query_one("#growth-targets", TargetsCard)
+            sends = self.query_one("#growth-sends", SendsCard)
+            replies = self.query_one("#growth-replies", RepliesCard)
+        except NoMatches:
+            return
+
+        objectives.set_data(
+            tuple(
+                (
+                    o.slug,
+                    o.title,
+                    o.deadline.strftime("%Y-%m-%d") if o.deadline else "",
+                    tuple(
+                        (s.title, str(s.state), s.progress, s.target)
+                        for s in o.steps
+                    ),
+                )
+                for o in snapshot.objectives
+            )
+        )
+        targets.set_data(
+            tuple(
+                (str(channel), count)
+                for channel, count in snapshot.targets_by_channel.items()
+            )
+        )
+        sends.set_data(snapshot.sends_24h)
+        replies.set_data(snapshot.replies_pending)
 
     # ------------------------------------------------------------------
     # Tasks — provider → filter → table → detail

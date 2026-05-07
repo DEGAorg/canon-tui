@@ -644,77 +644,82 @@ def verify_outreach(verbose: bool = False) -> bool:
 
 
 def verify_growth(verbose: bool = False) -> bool:
-    """Verify the Growth card widgets mount and render.
+    """Verify the Growth plugin protocol + host wiring.
 
-    Uses synthetic data — does not require the private ``dega_growth``
-    extension or live Sheets credentials.
+    The host (canon-tui) only owns the section slot; widgets and data
+    live in the private ``dega_growth`` submodule. This check uses a
+    fake panel to confirm the host correctly mounts and refreshes any
+    plugin that satisfies :class:`GrowthPanel`.
     """
     from textual.app import App, ComposeResult
     from textual.containers import Vertical
+    from textual.widgets import Static
 
-    from toad.widgets.growth_cards import (
-        ObjectivesCard,
-        RepliesCard,
-        SendsCard,
-        TargetsCard,
-    )
+    from toad.growth.protocol import GrowthPanel
 
     errors: list[str] = []
     results: dict[str, object] = {}
 
-    class GrowthHarness(App[None]):
+    class FakePanel:
+        id = "growth"
+        title = "Growth"
+        accent = "purple"
+        refresh_seconds = 60
+
+        def __init__(self) -> None:
+            self.mount_calls = 0
+            self.refresh_calls = 0
+            self._label: Static | None = None
+
+        async def available(self) -> bool:
+            return True
+
+        async def mount(self, container: Vertical) -> None:  # type: ignore[override]
+            self.mount_calls += 1
+            self._label = Static("fake-panel-mounted", id="fake-label")
+            await container.mount(self._label)
+
+        async def refresh(self) -> None:
+            self.refresh_calls += 1
+            if self._label is not None:
+                self._label.update(f"refresh #{self.refresh_calls}")
+
+    class GrowthHostHarness(App[None]):
         CSS = "Screen { overflow: hidden; }"
 
         def compose(self) -> ComposeResult:
-            with Vertical(id="growth-container"):
-                yield ObjectivesCard(
-                    objectives=(
-                        (
-                            "hackathon-may-2026",
-                            "Hackathon (May 2026)",
-                            "2026-05-15",
-                            (
-                                ("scrape uniclubs", "done", None, None),
-                                ("send DMs", "in_progress", 12, 50),
-                                ("collect replies", "pending", None, None),
-                            ),
-                        ),
-                    ),
-                    id="objectives",
-                )
-                yield TargetsCard(
-                    rows=(
-                        ("uniclubs", 0),
-                        ("discords", 0),
-                        ("telegrams", 0),
-                    ),
-                    id="targets",
-                )
-                yield SendsCard(total=0, id="sends")
-                yield RepliesCard(total=0, id="replies")
+            yield Vertical(id="growth-container")
 
     async def _run() -> None:
-        app = GrowthHarness()
+        panel = FakePanel()
+        results["satisfies_protocol"] = isinstance(panel, GrowthPanel)
+        if not isinstance(panel, GrowthPanel):
+            errors.append("FakePanel does not satisfy GrowthPanel protocol")
+            return
+        app = GrowthHostHarness()
         async with app.run_test(size=(80, 20)) as pilot:
             await pilot.pause()
-            obj = app.query_one("#objectives", ObjectivesCard)
-            tgt = app.query_one("#targets", TargetsCard)
-            snd = app.query_one("#sends", SendsCard)
-            rpl = app.query_one("#replies", RepliesCard)
+            container = app.query_one("#growth-container", Vertical)
 
-            results["objectives_text"] = obj.rendered.plain[:60]
-            results["targets_text"] = tgt.rendered.plain[:60]
-            results["sends_text"] = snd.rendered.plain
-            results["replies_text"] = rpl.rendered.plain
+            assert await panel.available()
+            await panel.mount(container)
+            await pilot.pause()
+            results["mount_calls"] = panel.mount_calls
+            results["after_mount_children"] = len(container.children)
 
-            if "Hackathon" not in obj.rendered.plain:
-                errors.append("ObjectivesCard did not render objective title")
-            if "uniclubs" not in tgt.rendered.plain:
-                errors.append("TargetsCard did not render channel labels")
-            if "Sends" not in snd.rendered.plain:
-                errors.append("SendsCard did not render its label")
-            if "Replies" not in rpl.rendered.plain:
-                errors.append("RepliesCard did not render its label")
+            await panel.refresh()
+            await pilot.pause()
+            results["refresh_calls"] = panel.refresh_calls
+            results["label_mounted"] = (
+                app.query_one("#fake-label", Static) is not None
+            )
+
+            if panel.mount_calls != 1:
+                errors.append(f"mount called {panel.mount_calls} times (expected 1)")
+            if panel.refresh_calls != 1:
+                errors.append(
+                    f"refresh called {panel.refresh_calls} times (expected 1)"
+                )
 
     asyncio.run(_run())
 
@@ -736,9 +741,9 @@ def verify_growth(verbose: bool = False) -> bool:
 
     builtins.__import__ = _block_import  # type: ignore[assignment]
     try:
-        provider = discover()
-        results["discover_none_when_module_absent"] = provider is None
-        if provider is not None:
+        panel = discover()
+        results["discover_none_when_module_absent"] = panel is None
+        if panel is not None:
             errors.append("discover() returned non-None with submodule blocked")
     finally:
         builtins.__import__ = real_import  # type: ignore[assignment]
@@ -972,7 +977,6 @@ def verify_imports(verbose: bool = False) -> bool:
         "toad.widgets.outreach_cards",
         "toad.growth.protocol",
         "toad.growth.registry",
-        "toad.widgets.growth_cards",
         "toad.widgets.plan_dep_graph",
         "toad.widgets.plan_status_rail",
         "toad.widgets.plan_worker_log_pane",

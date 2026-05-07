@@ -25,7 +25,7 @@ from textual.widgets import (
     TabPane,
 )
 
-from toad.growth.protocol import GrowthInfoProvider, GrowthSnapshot
+from toad.growth.protocol import GrowthPanel
 from toad.growth.registry import discover as discover_growth
 from toad.outreach.protocol import OutreachInfoProvider, OutreachSnapshot
 from toad.outreach.registry import discover as discover_outreach
@@ -39,12 +39,6 @@ from toad.widgets.github_views.github_timeline_provider import (
 from toad.widgets.github_views.task_provider import TaskItem, TaskProvider
 from toad.widgets.github_views.timeline_data import build_timeline
 from toad.widgets.orchestrator_state import OrchestratorStateWidget
-from toad.widgets.growth_cards import (
-    ObjectivesCard,
-    RepliesCard,
-    SendsCard,
-    TargetsCard,
-)
 from toad.widgets.outreach_cards import AccountDot, Histogram, RankedBar, StatLine
 from toad.widgets.plan import Plan
 from toad.widgets.plan_execution_section import ModelFactory, PlanExecutionSection
@@ -112,7 +106,6 @@ BADGE_OUTREACH = "badge-outreach"
 BADGE_GROWTH = "badge-growth"
 
 OUTREACH_REFRESH_INTERVAL = 30
-GROWTH_REFRESH_INTERVAL = 60
 
 
 @dataclass
@@ -364,10 +357,11 @@ class ProjectStatePane(Vertical):
         self._tasks_refresh_timer: Timer | None = None
         self._outreach_timer: Timer | None = None
         self._growth_timer: Timer | None = None
+        self._growth_mounted: bool = False
         self._provider = self._make_provider()
         self._task_provider = self._make_task_provider()
         self._outreach_provider: OutreachInfoProvider | None = discover_outreach()
-        self._growth_provider: GrowthInfoProvider | None = discover_growth()
+        self._growth_panel: GrowthPanel | None = discover_growth()
         self._all_tasks: list[TaskItem] = []
         self._filter_state = FilterState()
         self._selected_task_id: str | None = None
@@ -376,8 +370,10 @@ class ProjectStatePane(Vertical):
         self._sections: list[_SectionDef] = list(SECTIONS)
         if self._outreach_provider is not None:
             self._sections.append(_SectionDef(SECTION_OUTREACH, "Outreach"))
-        if self._growth_provider is not None:
-            self._sections.append(_SectionDef(SECTION_GROWTH, "Growth"))
+        if self._growth_panel is not None:
+            self._sections.append(
+                _SectionDef(SECTION_GROWTH, self._growth_panel.title)
+            )
         self._plan_exec_section: PlanExecutionSection | None = None
         self._plan_model_factory: ModelFactory | None = None
         self._plan_agent_getter: Callable[[], str] | None = None
@@ -485,18 +481,19 @@ class ProjectStatePane(Vertical):
                             yield Vertical(id="outreach-accounts")
 
         # --- Growth section (conditional) ---
-        if self._growth_provider is not None:
+        # The host owns the section / tab / badge slots only; the panel
+        # plugin populates ``#growth-container`` on first show via
+        # ``GrowthPanel.mount(container)``. This keeps all module-specific
+        # widgets and sub-tabs out of canon-tui.
+        if self._growth_panel is not None:
+            panel = self._growth_panel
             with Vertical(id=SECTION_GROWTH, classes="pane-section"):
                 yield SectionStatusBadge(
                     BadgeState.POLLING, id=BADGE_GROWTH, classes="section-badge"
                 )
                 with TabbedContent(id=TABS_GROWTH):
-                    with TabPane("Growth", id="tab-growth"):
-                        with Vertical(id="growth-container"):
-                            yield ObjectivesCard(id="growth-objectives")
-                            yield TargetsCard(id="growth-targets")
-                            yield SendsCard(id="growth-sends")
-                            yield RepliesCard(id="growth-replies")
+                    with TabPane(panel.title, id="tab-growth"):
+                        yield Vertical(id="growth-container")
 
     def on_mount(self) -> None:
         # All sections start hidden; the user opens one via toolbar / chat.
@@ -552,13 +549,14 @@ class ProjectStatePane(Vertical):
 
     def _sync_growth_timer(self, section_id: str, *, visible: bool) -> None:
         """Start/stop the Growth refresh timer when its section toggles."""
-        if section_id != SECTION_GROWTH or self._growth_provider is None:
+        if section_id != SECTION_GROWTH or self._growth_panel is None:
             return
         if visible:
             self._fetch_growth()
-            if self._growth_timer is None:
+            interval = self._growth_panel.refresh_seconds
+            if self._growth_timer is None and interval:
                 self._growth_timer = self.set_interval(
-                    GROWTH_REFRESH_INTERVAL, self._fetch_growth
+                    interval, self._fetch_growth
                 )
         else:
             self._stop_growth_timer()
@@ -1018,61 +1016,42 @@ class ProjectStatePane(Vertical):
                 )
 
     # ------------------------------------------------------------------
-    # Growth fetch — async provider pipeline
+    # Growth — plugin lifecycle (mount / refresh)
     # ------------------------------------------------------------------
 
     @work(exclusive=True, exit_on_error=False, group="fetch-growth")
     async def _fetch_growth(self) -> None:
-        """Fetch a growth snapshot and render it into the cards."""
-        if self._growth_provider is None:
+        """Drive the GrowthPanel lifecycle.
+
+        First call mounts the panel into ``#growth-container``. Subsequent
+        calls invoke ``panel.refresh()``. The host wraps both in badge
+        state transitions so the panel implementation stays oblivious to
+        UPDATING / ERROR / POLLING bookkeeping.
+        """
+        panel = self._growth_panel
+        if panel is None:
             return
+        try:
+            container = self.query_one("#growth-container", Vertical)
+        except NoMatches:
+            return
+
         self._mark_badge(BADGE_GROWTH, state=BadgeState.UPDATING)
         try:
-            if not await self._growth_provider.available():
+            if not await panel.available():
                 self._mark_badge(BADGE_GROWTH, state=BadgeState.OFFLINE)
                 return
-            snapshot = await self._growth_provider.snapshot()
+            if not self._growth_mounted:
+                await panel.mount(container)
+                self._growth_mounted = True
+            await panel.refresh()
         except Exception as exc:
             log.warning("Growth fetch failed: %s", exc)
             self._mark_badge(
                 BADGE_GROWTH, state=BadgeState.ERROR, message=str(exc)[:30]
             )
             return
-        self._render_growth(snapshot)
         self._mark_badge(BADGE_GROWTH, state=BadgeState.POLLING, updated=True)
-
-    def _render_growth(self, snapshot: GrowthSnapshot) -> None:
-        """Push a snapshot into the four growth cards."""
-        try:
-            objectives = self.query_one("#growth-objectives", ObjectivesCard)
-            targets = self.query_one("#growth-targets", TargetsCard)
-            sends = self.query_one("#growth-sends", SendsCard)
-            replies = self.query_one("#growth-replies", RepliesCard)
-        except NoMatches:
-            return
-
-        objectives.set_data(
-            tuple(
-                (
-                    o.slug,
-                    o.title,
-                    o.deadline.strftime("%Y-%m-%d") if o.deadline else "",
-                    tuple(
-                        (s.title, str(s.state), s.progress, s.target)
-                        for s in o.steps
-                    ),
-                )
-                for o in snapshot.objectives
-            )
-        )
-        targets.set_data(
-            tuple(
-                (str(channel), count)
-                for channel, count in snapshot.targets_by_channel.items()
-            )
-        )
-        sends.set_data(snapshot.sends_24h)
-        replies.set_data(snapshot.replies_pending)
 
     # ------------------------------------------------------------------
     # Tasks — provider → filter → table → detail

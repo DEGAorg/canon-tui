@@ -1,78 +1,79 @@
-"""Public protocol for the Growth right-pane panel.
+"""Public protocol for the Growth right-pane plugin.
 
-Concrete implementation lives in the private `toad.extensions.dega_growth`
-submodule. The public repo only defines the data contract and the
-Protocol that the registry looks up.
+Canon TUI provides the section slot, status badge, refresh timer, and
+ACP ``open_panel`` routing. The private ``toad.extensions.dega_growth``
+submodule provides the actual widgets, data, and sub-tab UX. This file
+defines the contract between them.
+
+Plugin architecture with dependency inversion: the module imports this
+protocol; the host has no compile-time dependency on the module.
+
+Lifecycle (host calls these in order):
+
+    available() → mount(container) → [refresh()...]
+
+The host wraps ``refresh()`` calls in badge state transitions
+(``UPDATING`` → ``POLLING`` on success, ``ERROR`` on exception). The
+panel is responsible for everything that lives inside ``container``.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime
-from enum import StrEnum
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-
-class Channel(StrEnum):
-    UNICLUBS = "uniclubs"
-    DISCORDS = "discords"
-    TELEGRAMS = "telegrams"
-
-
-class StepState(StrEnum):
-    PENDING = "pending"
-    IN_PROGRESS = "in_progress"
-    DONE = "done"
-    KILLED = "killed"
-
-
-@dataclass(frozen=True, slots=True)
-class Step:
-    id: str
-    title: str
-    state: StepState
-    channel: Channel | None
-    notes: str | None
-    progress: int | None
-    target: int | None
-
-
-@dataclass(frozen=True, slots=True)
-class Objective:
-    slug: str
-    title: str
-    deadline: datetime | None
-    steps: list[Step] = field(default_factory=list)
-
-
-@dataclass(frozen=True, slots=True)
-class GrowthSnapshot:
-    """Complete payload rendered by the Growth panel.
-
-    `targets_by_channel` maps each channel to its target row count
-    (read from the Sheet). `sends_24h` is the count of outbound actions
-    logged in the last 24 hours; `replies_pending` is replies awaiting
-    triage.
-    """
-
-    objectives: list[Objective]
-    targets_by_channel: dict[Channel, int]
-    sends_24h: int
-    replies_pending: int
+if TYPE_CHECKING:
+    from textual.widget import Widget
 
 
 @runtime_checkable
-class GrowthInfoProvider(Protocol):
-    """Data source for the Growth panel.
+class GrowthPanel(Protocol):
+    """A pluggable Growth panel.
 
-    The registry discovers an implementation at startup; if none is
-    found or the provider reports unavailable, the panel is not mounted.
+    Manifest fields are read by the host at discovery time without
+    instantiating Textual widgets, so they must be plain attributes (or
+    properties) on the panel object.
     """
 
+    # --- manifest ---
+    id: str
+    """Stable identifier used for ACP ``open_panel`` routing (e.g. ``"growth"``)."""
+
+    title: str
+    """Toolbar button label and TabPane title (e.g. ``"Growth"``)."""
+
+    accent: str
+    """CSS colour for the section's left-border accent (e.g. ``"purple"``)."""
+
+    refresh_seconds: int | None
+    """Auto-refresh cadence. ``None`` disables host-driven refresh."""
+
+    # --- lifecycle ---
+
     async def available(self) -> bool:
-        """Return True if the provider can currently serve a snapshot."""
+        """Return ``True`` if the panel can serve data right now.
+
+        Called before ``mount`` and again before each scheduled refresh.
+        Returning ``False`` flips the host's badge to ``OFFLINE``.
+        """
         ...
 
-    async def snapshot(self) -> GrowthSnapshot:
-        """Fetch and return the current panel payload."""
+    async def mount(self, container: "Widget") -> None:
+        """Populate ``container`` with the panel's widget tree.
+
+        Called once when the section first becomes visible. The panel
+        owns everything inside ``container``: layout, sub-tabs,
+        DataTables, detail screens, key handlers. Use
+        ``container.app.push_screen(...)`` from inside mounted widgets
+        to surface modal screens.
+        """
+        ...
+
+    async def refresh(self) -> None:
+        """Re-fetch and update the already-mounted widgets in place.
+
+        Called by the host on its timer (every ``refresh_seconds``
+        seconds). Should not re-mount; should not assume the section is
+        currently visible. Raise on transient failures — the host
+        translates exceptions into the section's ``ERROR`` badge state.
+        """
         ...

@@ -643,6 +643,122 @@ def verify_outreach(verbose: bool = False) -> bool:
     return len(errors) == 0, errors, results
 
 
+def verify_growth(verbose: bool = False) -> bool:
+    """Verify the Growth plugin protocol + host wiring.
+
+    The host (canon-tui) only owns the section slot; widgets and data
+    live in the private ``dega_growth`` submodule. This check uses a
+    fake panel to confirm the host correctly mounts and refreshes any
+    plugin that satisfies :class:`GrowthPanel`.
+    """
+    from textual.app import App, ComposeResult
+    from textual.containers import Vertical
+    from textual.widgets import Static
+
+    from toad.growth.protocol import GrowthPanel
+
+    errors: list[str] = []
+    results: dict[str, object] = {}
+
+    class FakePanel:
+        id = "growth"
+        title = "Growth"
+        accent = "purple"
+        refresh_seconds = 60
+
+        def __init__(self) -> None:
+            self.mount_calls = 0
+            self.refresh_calls = 0
+            self._label: Static | None = None
+
+        async def available(self) -> bool:
+            return True
+
+        async def mount(self, container: Vertical) -> None:  # type: ignore[override]
+            self.mount_calls += 1
+            self._label = Static("fake-panel-mounted", id="fake-label")
+            await container.mount(self._label)
+
+        async def refresh(self) -> None:
+            self.refresh_calls += 1
+            if self._label is not None:
+                self._label.update(f"refresh #{self.refresh_calls}")
+
+    class GrowthHostHarness(App[None]):
+        CSS = "Screen { overflow: hidden; }"
+
+        def compose(self) -> ComposeResult:
+            yield Vertical(id="growth-container")
+
+    async def _run() -> None:
+        panel = FakePanel()
+        results["satisfies_protocol"] = isinstance(panel, GrowthPanel)
+        if not isinstance(panel, GrowthPanel):
+            errors.append("FakePanel does not satisfy GrowthPanel protocol")
+            return
+        app = GrowthHostHarness()
+        async with app.run_test(size=(80, 20)) as pilot:
+            await pilot.pause()
+            container = app.query_one("#growth-container", Vertical)
+
+            assert await panel.available()
+            await panel.mount(container)
+            await pilot.pause()
+            results["mount_calls"] = panel.mount_calls
+            results["after_mount_children"] = len(container.children)
+
+            await panel.refresh()
+            await pilot.pause()
+            results["refresh_calls"] = panel.refresh_calls
+            results["label_mounted"] = (
+                app.query_one("#fake-label", Static) is not None
+            )
+
+            if panel.mount_calls != 1:
+                errors.append(f"mount called {panel.mount_calls} times (expected 1)")
+            if panel.refresh_calls != 1:
+                errors.append(
+                    f"refresh called {panel.refresh_calls} times (expected 1)"
+                )
+
+    asyncio.run(_run())
+
+    import sys
+
+    from toad.growth.registry import discover
+
+    ext_module = "toad.extensions.dega_growth"
+    saved_module = sys.modules.pop(ext_module, None)
+    saved_inner = sys.modules.pop(f"{ext_module}.dega_growth", None)
+    real_import = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __builtins__["__import__"]  # type: ignore[index]
+
+    def _block_import(name: str, *a: object, **kw: object) -> object:
+        if name == ext_module or name.startswith(ext_module + "."):
+            raise ImportError(f"simulated missing submodule: {name}")
+        return real_import(name, *a, **kw)  # type: ignore[misc]
+
+    import builtins
+
+    builtins.__import__ = _block_import  # type: ignore[assignment]
+    try:
+        panel = discover()
+        results["discover_none_when_module_absent"] = panel is None
+        if panel is not None:
+            errors.append("discover() returned non-None with submodule blocked")
+    finally:
+        builtins.__import__ = real_import  # type: ignore[assignment]
+        if saved_module is not None:
+            sys.modules[ext_module] = saved_module
+        if saved_inner is not None:
+            sys.modules[f"{ext_module}.dega_growth"] = saved_inner
+
+    if verbose:
+        for key, val in results.items():
+            console.print(f"  {key}: {val}")
+
+    return len(errors) == 0, errors, results
+
+
 def verify_plan_execution(verbose: bool = False) -> bool:
     """Verify ProjectStatePane auto-opens a plan tab on in-session arrival.
 
@@ -859,6 +975,8 @@ def verify_imports(verbose: bool = False) -> bool:
         "toad.outreach.protocol",
         "toad.outreach.registry",
         "toad.widgets.outreach_cards",
+        "toad.growth.protocol",
+        "toad.growth.registry",
         "toad.widgets.plan_dep_graph",
         "toad.widgets.plan_status_rail",
         "toad.widgets.plan_worker_log_pane",
@@ -886,6 +1004,7 @@ def main() -> None:
             "tasks",
             "subagents",
             "outreach",
+            "growth",
             "plan-execution",
             "live",
             "all",
@@ -901,6 +1020,7 @@ def main() -> None:
         "tasks": verify_tasks,
         "subagents": verify_subagents,
         "outreach": verify_outreach,
+        "growth": verify_growth,
         "plan-execution": verify_plan_execution,
     }
     # Live probe only runs when explicitly requested — it hits the network.

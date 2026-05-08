@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+### Added
+- Growth right-pane plugin — host slot in canon-tui plus the private `dega_growth` submodule (Overview / Discord / Telegram / Templates sub-tabs, Sheet-backed sends with mark-sent action, markdown templates) (`feat/growth-provider`) — 2026-05-08
+
 ### Changed
 - Live updates for PlanExecutionTab — directory watch + interval backstop (`20260427-plan-tab-live-updates`) — 2026-04-27
 

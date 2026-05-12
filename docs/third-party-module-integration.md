@@ -1,5 +1,10 @@
 # Third-Party Module Integration
 
+> **Legacy — superseded by [`extension-architecture.md`](extension-architecture.md).**
+> This doc describes Pattern A (Data Provider), used by Outreach. New
+> extensions must use Pattern B (Panel Plugin); see the successor doc
+> for the current standard, the rationale, and migration notes.
+
 How external modules plug into Canon TUI. This documents the pattern
 used by Outreach (the first third-party module) as the reference
 implementation.

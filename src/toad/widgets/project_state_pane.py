@@ -474,6 +474,7 @@ class ProjectStatePane(Vertical):
                     with TabPane("Outreach", id="tab-outreach"):
                         with Vertical(id="outreach-container"):
                             yield StatLine("Prospects", id="outreach-prospects")
+                            yield StatLine("Email leads", id="outreach-email-prospects")
                             yield Histogram("Sends · 24h", id="outreach-sends")
                             yield RankedBar(
                                 "Hackathons (top 5)", id="outreach-hackathons"
@@ -988,6 +989,23 @@ class ProjectStatePane(Vertical):
                 ("pending", p.pending, "warning"),
             ),
         )
+
+        try:
+            email_card = self.query_one("#outreach-email-prospects", StatLine)
+            ep = snapshot.email_prospects
+            if ep is None:
+                email_card.display = False
+            else:
+                email_card.display = True
+                email_card.set_data(
+                    ep.total,
+                    (
+                        ("ethglobal", ep.ethglobal, "success"),
+                        ("devpost", ep.devpost, "warning"),
+                    ),
+                )
+        except NoMatches:
+            pass
 
         if snapshot.sends is None:
             sends.display = False

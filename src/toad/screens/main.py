@@ -32,7 +32,7 @@ from toad.widgets.plan import Plan
 from toad.widgets.throbber import Throbber
 from toad.widgets.conversation import Conversation
 from toad.widgets.project_directory_tree import ProjectDirectoryTree
-from toad.widgets.builder_view import BuilderView
+from toad.widgets.automation_panel import AutomationPanel
 from toad.widgets.canon_state import CanonState, CanonStateWidget
 from toad.widgets.project_state_pane import ProjectStatePane
 
@@ -320,10 +320,10 @@ class MainScreen(Screen, can_focus=False):
         pane.activate_tab(tab_id)
 
     async def _forward_canon_state(self, state: "CanonState") -> None:
-        """Forward canon state directly to State view."""
+        """Forward canon state to the AutomationPanel reactive attribute."""
         pane = self.query_one("#project_state_pane", ProjectStatePane)
-        for view in pane.query(BuilderView):
-            await view._render_state(state)
+        for panel in pane.query(AutomationPanel):
+            panel.state = state
 
     def action_show_planning(self) -> None:
         """Open pane and show Planning section (Board tab)."""

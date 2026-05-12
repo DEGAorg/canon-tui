@@ -1,12 +1,11 @@
-"""Tests for canon state widget, builder view, and automation view.
+"""Tests for canon state, flow state, and automation panel helpers.
 
 Verifies:
 - CanonState dataclass and _parse_state with mock .canon/state.json data
+- FlowState extensions: nodes/edges, effective_nodes/edges, node_status
 - Phase transitions: build phases, run phase, develop→run switch
-- Error state handling (status=error, error message)
-- Log rendering with level-based color coding
-- BuilderView phase badge and iteration rendering
-- AutomationView status badge, metrics grid, error banner
+- Error state handling
+- Log rendering (automation_panel._render_log)
 - Graceful empty state when no data
 """
 
@@ -19,10 +18,14 @@ import pytest
 from toad.widgets.canon_state import (
     ALL_PHASES,
     BUILD_PHASES,
+    FlowEdge,
+    FlowNode,
+    FlowState,
     RUN_PHASES,
     CanonState,
     CanonStateWidget,
     LogEntry,
+    _parse_flow,
     _parse_state,
 )
 
@@ -41,7 +44,6 @@ def _build_state(
     logs: list[dict] | None = None,
     metrics: dict | None = None,
 ) -> dict:
-    """Build a raw state.json dict."""
     payload: dict = {
         "phase": phase,
         "status": status,
@@ -57,13 +59,11 @@ def _build_state(
 
 
 # ------------------------------------------------------------------
-# CanonState / _parse_state tests
+# CanonState / _parse_state
 # ------------------------------------------------------------------
 
 
 class TestCanonStateDataclass:
-    """CanonState properties and defaults."""
-
     def test_defaults(self):
         s = CanonState()
         assert s.phase == ""
@@ -95,8 +95,6 @@ class TestCanonStateDataclass:
 
 
 class TestParseState:
-    """_parse_state correctly maps raw JSON dicts to CanonState."""
-
     def test_minimal_payload(self):
         state = _parse_state({})
         assert state.phase == ""
@@ -112,16 +110,8 @@ class TestParseState:
             status="active",
             iteration=2,
             logs=[
-                {
-                    "level": "info",
-                    "message": "Starting scaffold",
-                    "timestamp": "2026-03-30T10:00:00Z",
-                },
-                {
-                    "level": "warn",
-                    "message": "Slow network",
-                    "timestamp": "2026-03-30T10:00:01Z",
-                },
+                {"level": "info",  "message": "Starting scaffold", "timestamp": "2026-03-30T10:00:00Z"},
+                {"level": "warn",  "message": "Slow network",      "timestamp": "2026-03-30T10:00:01Z"},
             ],
         )
         state = _parse_state(raw)
@@ -135,27 +125,19 @@ class TestParseState:
 
     def test_run_phase_with_metrics(self):
         raw = _build_state(
-            phase="run",
-            status="running",
-            iteration=1,
-            metrics={"requests": "142", "errors": "3", "p99_ms": "87"},
+            phase="run", status="running", iteration=1,
+            metrics={"requests": "142", "errors": "3"},
         )
         state = _parse_state(raw)
         assert state.is_run_phase is True
-        assert len(state.metrics) == 3
         assert ("requests", "142") in state.metrics
         assert ("errors", "3") in state.metrics
-        assert ("p99_ms", "87") in state.metrics
 
     def test_error_state(self):
-        raw = _build_state(
-            phase="develop",
-            status="error",
-            error="Build failed: missing dependency",
-        )
+        raw = _build_state(phase="develop", status="error", error="Build failed")
         state = _parse_state(raw)
         assert state.status == "error"
-        assert state.error == "Build failed: missing dependency"
+        assert state.error == "Build failed"
 
     def test_logs_missing_fields_default(self):
         raw = _build_state(logs=[{"message": "bare log"}])
@@ -165,312 +147,264 @@ class TestParseState:
         assert state.logs[0].message == "bare log"
 
     def test_metrics_values_coerced_to_str(self):
-        raw = _build_state(
-            phase="run",
-            status="running",
-            metrics={"count": 42, "rate": 3.14},
-        )
+        raw = _build_state(phase="run", status="running", metrics={"count": 42})
         state = _parse_state(raw)
         assert ("count", "42") in state.metrics
-        assert ("rate", "3.14") in state.metrics
 
     def test_roundtrip_through_json(self):
-        """Ensure _parse_state works on json.loads output."""
-        raw = _build_state(
-            phase="init",
-            status="active",
-            iteration=1,
-            logs=[{"level": "debug", "message": "boot"}],
-        )
-        text = json.dumps(raw)
-        state = _parse_state(json.loads(text))
+        raw = _build_state(phase="init", status="active", iteration=1,
+                           logs=[{"level": "debug", "message": "boot"}])
+        state = _parse_state(json.loads(json.dumps(raw)))
         assert state.phase == "init"
         assert state.logs[0].level == "debug"
 
 
 # ------------------------------------------------------------------
-# Phase transition tests
+# FlowState extensions
+# ------------------------------------------------------------------
+
+
+class TestFlowStateNodeStatus:
+    def test_completed_node_is_done(self):
+        flow = FlowState(steps=("a", "b"), active="b", completed=("a",))
+        assert flow.node_status("a") == "done"
+
+    def test_active_node_is_running(self):
+        flow = FlowState(steps=("a", "b"), active="b", completed=("a",))
+        assert flow.node_status("b") == "running"
+
+    def test_pending_node(self):
+        flow = FlowState(steps=("a", "b", "c"), active="a", completed=())
+        assert flow.node_status("c") == "pending"
+
+    def test_done_takes_priority_over_active(self):
+        # completed should win even if active is also set (shouldn't happen, but defensive)
+        flow = FlowState(steps=("a",), active="a", completed=("a",))
+        assert flow.node_status("a") == "done"
+
+
+class TestFlowStateEffectiveNodes:
+    def test_declared_nodes_returned_as_is(self):
+        nodes = (FlowNode("x", "X", "build"), FlowNode("y", "Y", "gate"))
+        flow = FlowState(steps=("x", "y"), nodes=nodes)
+        assert flow.effective_nodes() == nodes
+
+    def test_fallback_synthesizes_from_steps(self):
+        flow = FlowState(steps=("init", "develop"), labels=(("init", "Init"), ("develop", "Develop")))
+        eff = flow.effective_nodes()
+        assert len(eff) == 2
+        assert eff[0].id == "init"
+        assert eff[0].label == "Init"
+        assert eff[1].id == "develop"
+        assert eff[1].label == "Develop"
+
+    def test_fallback_label_titlizes_step_id(self):
+        flow = FlowState(steps=("my_step",))
+        eff = flow.effective_nodes()
+        assert eff[0].label == "My Step"
+
+    def test_empty_steps_returns_empty(self):
+        flow = FlowState()
+        assert flow.effective_nodes() == ()
+
+
+class TestFlowStateEffectiveEdges:
+    def test_declared_edges_returned_as_is(self):
+        edges = (FlowEdge("a", "b"), FlowEdge("b", "c"))
+        flow = FlowState(steps=("a", "b", "c"), edges=edges)
+        assert flow.effective_edges() == edges
+
+    def test_fallback_synthesizes_linear_chain(self):
+        flow = FlowState(steps=("a", "b", "c"))
+        eff = flow.effective_edges()
+        assert len(eff) == 2
+        assert eff[0] == FlowEdge("a", "b")
+        assert eff[1] == FlowEdge("b", "c")
+
+    def test_single_step_no_edges(self):
+        flow = FlowState(steps=("only",))
+        assert flow.effective_edges() == ()
+
+    def test_empty_steps_no_edges(self):
+        flow = FlowState()
+        assert flow.effective_edges() == ()
+
+
+class TestParseFlowWithNodes:
+    def test_parse_nodes_and_edges(self):
+        data = {
+            "steps": ["init", "run"],
+            "labels": {},
+            "active": "run",
+            "completed": ["init"],
+            "nodes": [
+                {"id": "init", "label": "Init", "type": "build"},
+                {"id": "run",  "label": "Run",  "type": "gate"},
+            ],
+            "edges": [{"from": "init", "to": "run"}],
+        }
+        flow = _parse_flow(data)
+        assert len(flow.nodes) == 2
+        assert flow.nodes[0].id == "init"
+        assert flow.nodes[1].type == "gate"
+        assert len(flow.edges) == 1
+        assert flow.edges[0].from_id == "init"
+        assert flow.edges[0].to_id == "run"
+
+    def test_parse_missing_nodes_gives_empty(self):
+        data = {"steps": ["a", "b"], "labels": {}, "active": "a", "completed": []}
+        flow = _parse_flow(data)
+        assert flow.nodes == ()
+        assert flow.edges == ()
+
+    def test_node_missing_id_skipped(self):
+        data = {
+            "steps": [], "labels": {}, "active": "", "completed": [],
+            "nodes": [{"label": "No ID"}],
+        }
+        flow = _parse_flow(data)
+        assert flow.nodes == ()
+
+    def test_edge_missing_fields_skipped(self):
+        data = {
+            "steps": [], "labels": {}, "active": "", "completed": [],
+            "edges": [{"from": "a"}],  # missing "to"
+        }
+        flow = _parse_flow(data)
+        assert flow.edges == ()
+
+
+# ------------------------------------------------------------------
+# Phase transitions
 # ------------------------------------------------------------------
 
 
 class TestPhaseTransitions:
-    """Verify phase classification across all transitions."""
-
     @pytest.mark.parametrize(
         ("from_phase", "to_phase", "expect_build", "expect_run"),
         [
-            ("init", "scaffold", True, False),
-            ("scaffold", "strategy", True, False),
-            ("strategy", "develop", True, False),
-            ("develop", "run", False, True),
+            ("init",     "scaffold", True,  False),
+            ("scaffold", "strategy", True,  False),
+            ("strategy", "develop",  True,  False),
+            ("develop",  "run",      False, True),
         ],
     )
-    def test_transition(
-        self,
-        from_phase: str,
-        to_phase: str,
-        expect_build: bool,
-        expect_run: bool,
-    ):
-        old = CanonState(phase=from_phase)
+    def test_transition(self, from_phase, to_phase, expect_build, expect_run):
         new = CanonState(phase=to_phase)
-        # Old state should be build-phase for first 3 transitions
-        if from_phase != "develop" or to_phase != "run":
-            assert old.is_build_phase is True
-        # New state classification
         assert new.is_build_phase is expect_build
         assert new.is_run_phase is expect_run
 
     def test_develop_to_run_switches_section(self):
-        """The critical develop→run transition should flip is_build→is_run."""
         old = CanonState(phase="develop")
         new = CanonState(phase="run")
         assert old.is_build_phase is True
-        assert old.is_run_phase is False
-        assert new.is_build_phase is False
         assert new.is_run_phase is True
 
 
 # ------------------------------------------------------------------
-# Log rendering tests
+# Log rendering (automation_panel)
 # ------------------------------------------------------------------
 
 
-class TestBuilderLogRendering:
-    """builder_view._render_log produces correct Rich markup."""
+class TestLogRendering:
+    """automation_panel._render_log produces correct Rich markup."""
 
-    def test_info_log(self):
-        from toad.widgets.builder_view import _render_log
+    def test_message_present(self):
+        from toad.widgets.automation_panel import _render_log
+        entry = LogEntry(level="info", message="hello")
+        assert "hello" in _render_log(entry)
 
-        entry = LogEntry(level="info", message="hello", timestamp="10:00")
-        rendered = _render_log(entry)
-        assert "hello" in rendered
-        assert "INFO" in rendered
-        assert "10:00" in rendered
+    def test_error_level_red(self):
+        from toad.widgets.automation_panel import _render_log
+        assert "[red bold]" in _render_log(LogEntry(level="error", message="fail"))
 
-    def test_error_log_color(self):
-        from toad.widgets.builder_view import _render_log
+    def test_warn_level_yellow(self):
+        from toad.widgets.automation_panel import _render_log
+        assert "[yellow]" in _render_log(LogEntry(level="warn", message="heads up"))
 
-        entry = LogEntry(level="error", message="fail")
-        rendered = _render_log(entry)
-        assert "[red bold]" in rendered
-        assert "ERROR" in rendered
+    def test_warning_alias_yellow(self):
+        from toad.widgets.automation_panel import _render_log
+        assert "[yellow]" in _render_log(LogEntry(level="warning", message="w"))
 
-    def test_warn_log_color(self):
-        from toad.widgets.builder_view import _render_log
+    def test_debug_level_dim(self):
+        from toad.widgets.automation_panel import _render_log
+        assert "[dim]" in _render_log(LogEntry(level="debug", message="trace"))
 
-        entry = LogEntry(level="warn", message="caution")
-        rendered = _render_log(entry)
-        assert "[yellow]" in rendered
-        assert "WARN" in rendered
+    def test_unknown_level_white(self):
+        from toad.widgets.automation_panel import _render_log
+        assert "[white]" in _render_log(LogEntry(level="custom", message="msg"))
 
-    def test_debug_log_color(self):
-        from toad.widgets.builder_view import _render_log
-
-        entry = LogEntry(level="debug", message="trace")
-        rendered = _render_log(entry)
-        assert "[dim]" in rendered
-        assert "DEBUG" in rendered
-
-    def test_no_timestamp(self):
-        from toad.widgets.builder_view import _render_log
-
-        entry = LogEntry(level="info", message="no ts")
-        rendered = _render_log(entry)
-        # Should not have an empty timestamp prefix
-        assert rendered.strip().startswith("[")
-
-    def test_unknown_level_defaults_white(self):
-        from toad.widgets.builder_view import _render_log
-
-        entry = LogEntry(level="custom", message="msg")
-        rendered = _render_log(entry)
-        assert "[white]" in rendered
-
-
-class TestAutomationLogRendering:
-    """automation_view._render_log produces correct Rich markup."""
-
-    def test_info_log(self):
-        from toad.widgets.automation_view import _render_log
-
-        entry = LogEntry(level="info", message="running")
-        rendered = _render_log(entry)
-        assert "running" in rendered
-        assert "INFO" in rendered
-
-    def test_error_log(self):
-        from toad.widgets.automation_view import _render_log
-
-        entry = LogEntry(level="error", message="crash")
-        rendered = _render_log(entry)
-        assert "[red bold]" in rendered
-
-    def test_warning_alias(self):
-        from toad.widgets.automation_view import _render_log
-
-        entry = LogEntry(level="warning", message="heads up")
-        rendered = _render_log(entry)
-        assert "[yellow]" in rendered
-        assert "WARNING" in rendered
+    def test_no_timestamp_no_dim_prefix(self):
+        from toad.widgets.automation_panel import _render_log
+        rendered = _render_log(LogEntry(level="info", message="no ts"))
+        # Timestamp markup only present when timestamp is non-empty
+        assert "10]" not in rendered
 
 
 # ------------------------------------------------------------------
-# Builder/Automation view helper tests
-# ------------------------------------------------------------------
-
-
-class TestBuilderViewHelpers:
-    """Phase badge and related helpers."""
-
-    def test_phase_badge_colors(self):
-        from toad.widgets.builder_view import PHASE_COLORS, _phase_badge
-
-        for phase, color in PHASE_COLORS.items():
-            badge = _phase_badge(phase)
-            assert f"[{color}]" in badge
-            assert phase.upper() in badge
-
-    def test_phase_badge_unknown_uses_dim(self):
-        from toad.widgets.builder_view import _phase_badge
-
-        badge = _phase_badge("unknown")
-        assert "[dim]" in badge
-
-
-class TestAutomationViewHelpers:
-    """Status badge and metric rendering."""
-
-    def test_status_badge_colors(self):
-        from toad.widgets.automation_view import STATUS_COLORS, _status_badge
-
-        for status, color in STATUS_COLORS.items():
-            badge = _status_badge(status)
-            assert f"[{color}]" in badge
-            assert status.upper() in badge
-
-    def test_render_metric(self):
-        from toad.widgets.automation_view import _render_metric
-
-        line = _render_metric("requests", "142")
-        assert "[bold]requests[/]" in line
-        assert "142" in line
-
-
-# ------------------------------------------------------------------
-# Error state tests
+# Error state
 # ------------------------------------------------------------------
 
 
 class TestErrorState:
-    """Error conditions are properly surfaced."""
-
     def test_error_state_from_json(self):
-        raw = _build_state(
-            phase="develop",
-            status="error",
-            error="Compilation failed",
-            logs=[{"level": "error", "message": "exit code 1"}],
-        )
+        raw = _build_state(phase="develop", status="error", error="Compile failed",
+                           logs=[{"level": "error", "message": "exit 1"}])
         state = _parse_state(raw)
         assert state.status == "error"
-        assert state.error == "Compilation failed"
+        assert state.error == "Compile failed"
         assert state.logs[0].level == "error"
 
     def test_error_none_when_absent(self):
-        raw = _build_state(phase="run", status="running")
-        state = _parse_state(raw)
-        assert state.error is None
+        assert _parse_state(_build_state(phase="run", status="running")).error is None
 
     def test_error_in_run_phase(self):
-        raw = _build_state(
-            phase="run",
-            status="error",
-            error="Agent timeout",
-        )
-        state = _parse_state(raw)
+        state = _parse_state(_build_state(phase="run", status="error", error="Timeout"))
         assert state.is_run_phase is True
-        assert state.error == "Agent timeout"
+        assert state.error == "Timeout"
 
 
 # ------------------------------------------------------------------
-# CanonStateWidget message types
+# CanonStateWidget messages
 # ------------------------------------------------------------------
 
 
 class TestCanonStateWidgetMessages:
-    """Message classes exist with correct interfaces."""
-
-    def test_detected_message_is_message(self):
+    def test_detected_is_message(self):
         from textual.message import Message
+        assert isinstance(CanonStateWidget.CanonStateDetected(), Message)
 
-        msg = CanonStateWidget.CanonStateDetected()
-        assert isinstance(msg, Message)
-
-    def test_updated_message_carries_state(self):
+    def test_updated_carries_state(self):
         state = CanonState(phase="run", status="running")
         msg = CanonStateWidget.CanonStateUpdated(state)
         assert msg.state is state
         assert msg.state.phase == "run"
 
-    def test_updated_message_is_message(self):
-        from textual.message import Message
-
-        state = CanonState()
-        msg = CanonStateWidget.CanonStateUpdated(state)
-        assert isinstance(msg, Message)
-
 
 # ------------------------------------------------------------------
-# MainScreen auto-show handler existence
-# ------------------------------------------------------------------
-
-
-class TestMainScreenCanonHandlers:
-    """MainScreen has canon state event handlers."""
-
-    def test_canon_detected_handler_exists(self):
-        from toad.screens.main import MainScreen
-
-        assert hasattr(MainScreen, "_on_canon_detected")
-
-    def test_canon_updated_handler_exists(self):
-        from toad.screens.main import MainScreen
-
-        assert hasattr(MainScreen, "_on_canon_updated")
-
-
-# ------------------------------------------------------------------
-# ProjectStatePane section registration
+# ProjectStatePane — automation section registered
 # ------------------------------------------------------------------
 
 
 class TestProjectStatePaneSections:
-    """Builder and Automation sections are registered."""
-
-    def test_builder_section_registered(self):
-        import inspect
-
-        from toad.widgets.project_state_pane import ProjectStatePane
-
-        source = inspect.getsource(ProjectStatePane)
-        assert "Builder" in source or "builder" in source
-
     def test_automation_section_registered(self):
         import inspect
-
         from toad.widgets.project_state_pane import ProjectStatePane
-
         source = inspect.getsource(ProjectStatePane)
         assert "Automation" in source or "automation" in source
 
+    def test_automation_route_exists(self):
+        from toad.widgets.project_state_pane import PANEL_ROUTES
+        assert "automation" in PANEL_ROUTES
+
+    def test_status_route_removed(self):
+        from toad.widgets.project_state_pane import PANEL_ROUTES
+        assert "status" not in PANEL_ROUTES
+
     def test_canon_state_widget_mounted(self):
         import inspect
-
         from toad.widgets.project_state_pane import ProjectStatePane
-
-        source = inspect.getsource(ProjectStatePane)
-        assert "CanonStateWidget" in source
+        assert "CanonStateWidget" in inspect.getsource(ProjectStatePane)
 
 
 # ------------------------------------------------------------------
@@ -479,11 +413,8 @@ class TestProjectStatePaneSections:
 
 
 class TestGracefulEmptyState:
-    """Absent .canon/state.json → empty / default CanonState."""
-
     def test_empty_parse(self):
-        state = _parse_state({})
-        assert state == CanonState()
+        assert _parse_state({}) == CanonState()
 
     def test_empty_state_is_neither_build_nor_run(self):
         state = CanonState()

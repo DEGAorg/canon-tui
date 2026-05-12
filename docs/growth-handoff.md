@@ -1,5 +1,9 @@
 # Growth panel — implementation handoff
 
+> **Historical handoff — Growth is shipped.** For the current extension
+> architecture standard (of which Growth is the reference
+> implementation), see [`extension-architecture.md`](extension-architecture.md).
+
 Hand-off doc for finishing the Growth right-pane panel in canon-tui. The
 data layer (private submodule `dega_growth`) is complete and verified
 against the live Sheet; what remains is canon-tui side wiring, mirroring

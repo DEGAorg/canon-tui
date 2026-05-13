@@ -1141,11 +1141,11 @@ def verify_automation_panel(verbose: bool = False) -> tuple[bool, list[str], dic
                 )
 
             from textual.widgets import Static
-            header = app.query_one("#automation-header", Static)
-            header_text = str(header.content)
-            results["header_has_phase"] = "scaffold" in header_text
-            if "scaffold" not in header_text:
-                errors.append(f"header missing phase name, got: {header_text!r}")
+            initial_summary = app.query_one("#state-summary", Static)
+            initial_text = str(initial_summary.content)
+            results["summary_has_phase"] = "scaffold" in initial_text
+            if "scaffold" not in initial_text:
+                errors.append(f"summary missing phase name, got: {initial_text!r}")
 
             # Run phase + non-running status — no auto-switch trigger.
             tabs.active = "tab-flow"

@@ -1,17 +1,15 @@
-"""AutomationPanel — slim header + System (build/live/logs) + Flow tabs.
+"""AutomationPanel — state summary + System/Flow tabs (diagrams) + always-visible logs.
 
 Layout:
 
-    [slim header — always visible]
-    Tabs: System | Flow
+    [state summary — single status row + metrics]
+    Tabs: System | Flow            ← diagrams only
       System (default):
-        [rich state summary]
-        [build diagram]   — collapses to a one-row chip once we leave build
-        [live diagram]    — appears once we've ever seen phase=live; persists
-                            with last seen status if phase reverts
-        [logs]            — fills remaining space, scrollable
+        [build diagram]            ← collapses to a chip once we leave build
+        [live diagram]             ← persists with last seen status once seen
       Flow:
         [strategy flow.json DAG]
+    [logs — always visible below the tabs, regardless of active tab]
 """
 
 from __future__ import annotations
@@ -191,21 +189,6 @@ class AutomationPanel(Widget):
     AutomationPanel {
         height: 1fr;
     }
-    AutomationPanel #automation-header {
-        height: 1;
-        padding: 0 1;
-        background: $surface;
-        color: $text-muted;
-    }
-    AutomationPanel #automation-tabs {
-        height: 1fr;
-    }
-
-    /* System tab layout: state summary → build → live → logs */
-    AutomationPanel #system-pane {
-        height: 1fr;
-        width: 1fr;
-    }
     AutomationPanel #state-summary {
         height: auto;
         max-height: 3;
@@ -213,6 +196,14 @@ class AutomationPanel(Widget):
         background: $surface;
         color: $text;
         border-bottom: solid $surface-lighten-2;
+    }
+
+    AutomationPanel #automation-tabs {
+        height: 3fr;
+        min-height: 12;
+    }
+    AutomationPanel #system-pane {
+        height: auto;
     }
     AutomationPanel #build-collapsed {
         height: 1;
@@ -228,13 +219,13 @@ class AutomationPanel(Widget):
     }
     AutomationPanel #live-diagram {
         display: none;
-        border-top: solid $surface-lighten-2;
     }
     AutomationPanel.seen-live #live-diagram {
         display: block;
     }
+
     AutomationPanel #automation-logs {
-        height: 1fr;
+        height: 2fr;
         min-height: 6;
         border-top: solid $surface-lighten-2;
     }
@@ -279,26 +270,25 @@ class AutomationPanel(Widget):
         self._last_live_status: str = ""
 
     def compose(self) -> ComposeResult:
-        yield Static("", id="automation-header")
+        yield Static("", id="state-summary")
         with TabbedContent(id="automation-tabs"):
             with TabPane("System", id="tab-system"):
                 with Vertical(id="system-pane"):
-                    yield Static("", id="state-summary")
                     yield Static(
                         "[green]✓[/] Build pipeline complete",
                         id="build-collapsed",
                     )
                     yield CanonPhaseDiagram(mode="build", id="build-diagram")
                     yield CanonPhaseDiagram(mode="live", id="live-diagram")
-                    with VerticalScroll(id="automation-logs"):
-                        yield Static(
-                            "Waiting for logs…",
-                            classes="empty-state",
-                            id="automation-logs-empty",
-                        )
             with TabPane("Flow", id="tab-flow"):
                 with HorizontalScroll(id="dag-scroll"):
                     yield AutomationDag(id="automation-dag")
+        with VerticalScroll(id="automation-logs"):
+            yield Static(
+                "Waiting for logs…",
+                classes="empty-state",
+                id="automation-logs-empty",
+            )
 
     def on_mount(self) -> None:
         # Mark setup complete after first refresh so initial TabActivated
@@ -313,7 +303,6 @@ class AutomationPanel(Widget):
         self._track_live_persistence(state)
         self._refresh_collapse(state)
         self._maybe_auto_switch(state)
-        self._refresh_header(state)
         self._refresh_state_summary(state)
 
         # Build diagram: always reflects current state.
@@ -372,7 +361,7 @@ class AutomationPanel(Widget):
                 tabs.active = "tab-system"
 
     # ------------------------------------------------------------------
-    # Header (slim, always visible) + State summary (rich, inside System)
+    # State summary (single status row, always visible above tabs)
     # ------------------------------------------------------------------
 
     def _track_elapsed(self, state: CanonState) -> None:
@@ -381,27 +370,6 @@ class AutomationPanel(Widget):
         if state.phase and state.phase != self._last_active:
             self._active_since = datetime.now(timezone.utc)
             self._last_active = state.phase
-
-    def _refresh_header(self, state: CanonState) -> None:
-        header = self.query_one("#automation-header", Static)
-        if not state.phase:
-            header.update("[dim]○ idle · No automation running[/]")
-            return
-
-        status = state.status or "idle"
-        status_color = STATUS_COLORS.get(status, "white")
-        icon = PHASE_ICONS.get(state.phase, "◈")
-        sublabel = _phase_sublabel(state)
-
-        phase_text = f"{icon} [bold]{state.phase}[/]"
-        if sublabel and sublabel.lower() != state.phase.lower():
-            phase_text += f" · {sublabel}"
-
-        parts = [f"[{status_color}]● {status}[/]", phase_text]
-        elapsed = _format_elapsed(self._active_since)
-        if elapsed:
-            parts.append(elapsed)
-        header.update(" · ".join(parts))
 
     def _refresh_state_summary(self, state: CanonState) -> None:
         summary = self.query_one("#state-summary", Static)

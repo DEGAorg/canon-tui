@@ -1130,18 +1130,16 @@ def verify_automation_panel(verbose: bool = False) -> tuple[bool, list[str], dic
             panel = app.query_one("#panel", AutomationPanel)
             tabs = app.query_one("#automation-tabs", TabbedContent)
 
-            # Build phase: stay on Phases (no auto-switch to Flow).
+            # Build phase: stay on System (default), no auto-switch trigger.
             panel.state = CanonState(phase="scaffold", flow=flow)
             await pilot.pause()
             await pilot.pause()
-
             results["build_phase_tab"] = tabs.active
-            if tabs.active != "tab-phases":
+            if tabs.active != "tab-system":
                 errors.append(
-                    f"build phase: expected tab-phases (no auto-switch), got {tabs.active!r}"
+                    f"build phase: expected tab-system, got {tabs.active!r}"
                 )
 
-            # Header should contain the phase name
             from textual.widgets import Static
             header = app.query_one("#automation-header", Static)
             header_text = str(header.content)
@@ -1149,84 +1147,94 @@ def verify_automation_panel(verbose: bool = False) -> tuple[bool, list[str], dic
             if "scaffold" not in header_text:
                 errors.append(f"header missing phase name, got: {header_text!r}")
 
-            # Run phase BUT status not "running" — no auto-switch yet
+            # Run phase + non-running status — no auto-switch trigger.
+            tabs.active = "tab-flow"
+            await pilot.pause()
             panel.state = CanonState(phase="run", status="starting", flow=flow)
             await pilot.pause()
             await pilot.pause()
             results["run_not_running_tab"] = tabs.active
-            if tabs.active != "tab-phases":
+            if tabs.active != "tab-flow":
                 errors.append(
-                    f"run phase + non-running status: expected tab-phases, got {tabs.active!r}"
+                    f"run + non-running: expected tab-flow (manual nav), got {tabs.active!r}"
                 )
 
-            # Run phase + status == "running" → auto-switch to Logs
-            panel.state = CanonState(phase="run", status="running", flow=flow)
+            # Run phase + status = "polling" — auto-switch fires (dry-run runner
+            # writes 'polling', not 'running').
+            panel.state = CanonState(phase="run", status="polling", flow=flow)
             await pilot.pause()
             await pilot.pause()
-
-            results["after_run_tab"] = tabs.active
-            if tabs.active != "tab-logs":
-                errors.append(f"run+running: expected auto-switch to tab-logs, got {tabs.active!r}")
-
-            # Second run-running update → no tab change (already switched for this phase)
-            panel.state = CanonState(phase="run", status="running", flow=flow)
-            await pilot.pause()
-
-            results["after_second_run_tab"] = tabs.active
-            if tabs.active != "tab-logs":
-                errors.append(f"second run-running should stay on tab-logs, got {tabs.active!r}")
-
-            results["auto_switched_phase"] = panel._auto_switched_phase
+            results["after_run_polling_tab"] = tabs.active
+            if tabs.active != "tab-system":
+                errors.append(
+                    f"run+polling: expected auto-switch to tab-system, got {tabs.active!r}"
+                )
             if panel._auto_switched_phase != "run":
                 errors.append(
                     f"_auto_switched_phase should be 'run', got {panel._auto_switched_phase!r}"
                 )
 
-            # Live mode: phase transitions to "live" with status="deposit-pending".
-            # User goes back to Phases manually; should NOT auto-switch again yet.
-            tabs.active = "tab-phases"
+            # User navigates away; phase=live with deposit-pending shouldn't switch.
+            tabs.active = "tab-flow"
             await pilot.pause()
             panel.state = CanonState(phase="live", status="deposit-pending", flow=flow)
             await pilot.pause()
             await pilot.pause()
             results["live_awaiting_tab"] = tabs.active
-            if tabs.active != "tab-phases":
+            if tabs.active != "tab-flow":
                 errors.append(
-                    f"live+deposit-pending: expected to stay on tab-phases, got {tabs.active!r}"
+                    f"live+deposit-pending: expected tab-flow (manual nav), got {tabs.active!r}"
                 )
 
-            # Live runner actually running → auto-switch to Logs (fresh switch for live phase)
+            # Live runner running → auto-switch (fresh switch for live phase).
             panel.state = CanonState(phase="live", status="running", flow=flow)
             await pilot.pause()
             await pilot.pause()
             results["live_running_tab"] = tabs.active
-            if tabs.active != "tab-logs":
+            if tabs.active != "tab-system":
                 errors.append(
-                    f"live+running: expected auto-switch to tab-logs, got {tabs.active!r}"
+                    f"live+running: expected auto-switch to tab-system, got {tabs.active!r}"
                 )
             if panel._auto_switched_phase != "live":
                 errors.append(
                     f"_auto_switched_phase should be 'live', got {panel._auto_switched_phase!r}"
                 )
 
-            # Logs tab state summary shows phase + status + metrics
-            summary = app.query_one("#logs-state-summary", Static)
+            # Live persistence: phase reverts to 'run' — live diagram should still
+            # be visible (seen-live class on panel).
+            panel.state = CanonState(phase="run", status="complete", flow=flow)
+            await pilot.pause()
+            results["seen_live_persists"] = panel.has_class("seen-live")
+            if not panel.has_class("seen-live"):
+                errors.append("after seeing live, seen-live class should persist")
+
+            # State summary shows phase + status + metrics (zero filtered, errors kept)
+            summary = app.query_one("#state-summary", Static)
             panel.state = CanonState(
                 phase="run",
                 status="running",
                 iteration=5,
-                metrics=(("cycles", "47"), ("trades", "0")),
+                metrics=(("cycles", "47"), ("trades", "0"), ("errors", "0"), ("mode", "live")),
                 flow=flow,
             )
             await pilot.pause()
             summary_text = str(summary.content)
             results["summary_has_status"] = "running" in summary_text
-            results["summary_has_metrics"] = "Runs" in summary_text or "cycles" in summary_text
             results["summary_has_iter"] = "iter 5" in summary_text
+            results["summary_has_runs"] = "Runs" in summary_text and "47" in summary_text
+            results["summary_drops_mode"] = "Mode" not in summary_text
+            results["summary_drops_zero_trades"] = "Trades: 0" not in summary_text
+            results["summary_keeps_zero_errors"] = "Errors" in summary_text
             if "running" not in summary_text:
-                errors.append(f"logs summary missing status, got: {summary_text!r}")
+                errors.append(f"summary missing status, got: {summary_text!r}")
             if "iter 5" not in summary_text:
-                errors.append(f"logs summary missing iteration, got: {summary_text!r}")
+                errors.append(f"summary missing iteration, got: {summary_text!r}")
+            if "Mode" in summary_text:
+                errors.append(f"summary should drop 'Mode' metric, got: {summary_text!r}")
+            if "Trades: 0" in summary_text:
+                errors.append(f"summary should hide zero-valued non-errors, got: {summary_text!r}")
+            if "Errors" not in summary_text:
+                errors.append(f"summary should keep Errors even at 0, got: {summary_text!r}")
 
             # No crash on missing flow
             panel.state = CanonState(phase="")
@@ -1251,50 +1259,47 @@ def verify_phases_diagram(
     errors: list[str] = []
     results: dict[str, object] = {}
 
-    # --- Unit: _synthesize_flow status derivation ---
+    # --- Unit: mode-specific flow synthesis ---
     from toad.widgets.canon_state import CanonState
-    from toad.widgets.canon_phase_diagram import _synthesize_flow
+    from toad.widgets.canon_phase_diagram import (
+        _synthesize_build_flow,
+        _synthesize_live_flow,
+    )
 
-    # No phase — all pending
-    if _synthesize_flow(CanonState(phase="")).active != "":
+    # Build mode: empty phase — no active
+    if _synthesize_build_flow(CanonState(phase="")).active != "":
         errors.append("empty phase: expected active=''")
 
-    # Build mode: init phase — init running
-    f = _synthesize_flow(CanonState(phase="init", status="running"))
+    f = _synthesize_build_flow(CanonState(phase="init", status="running"))
     if f.active != "init":
         errors.append(f"init phase: expected active='init', got {f.active!r}")
 
-    # Build mode: scaffold — init done, scaffold running
-    f = _synthesize_flow(CanonState(phase="scaffold", status="running"))
+    f = _synthesize_build_flow(CanonState(phase="scaffold", status="running"))
     if f.active != "scaffold":
         errors.append(f"scaffold phase: expected active='scaffold', got {f.active!r}")
     if "init" not in f.completed:
         errors.append("scaffold phase: init should be done")
 
-    # Build mode: run — all before run done
-    f = _synthesize_flow(CanonState(phase="run", status="running"))
+    f = _synthesize_build_flow(CanonState(phase="run", status="running"))
     if f.active != "run":
         errors.append(f"run phase: expected active='run', got {f.active!r}")
     for p in ("init", "scaffold", "strategy", "develop"):
         if p not in f.completed:
             errors.append(f"run phase: {p!r} should be done")
 
-    # Live mode: live + deposit-pending → awaiting active
-    f = _synthesize_flow(CanonState(phase="live", status="deposit-pending"))
+    # Live mode: deposit-pending → awaiting active
+    f = _synthesize_live_flow(CanonState(phase="live", status="deposit-pending"))
     if f.active != "awaiting":
         errors.append(f"live+deposit-pending: expected active='awaiting', got {f.active!r}")
-    results["live_steps"] = f.steps
 
-    # Live mode: live + onboarding → previous nodes done, onboard active
-    f = _synthesize_flow(CanonState(phase="live", status="onboarding"))
+    f = _synthesize_live_flow(CanonState(phase="live", status="onboarding"))
     if f.active != "onboard":
         errors.append(f"live+onboarding: expected active='onboard', got {f.active!r}")
     for n in ("awaiting", "detected"):
         if n not in f.completed:
             errors.append(f"live+onboarding: {n!r} should be done")
 
-    # Live mode: live + running → all before live done, live active
-    f = _synthesize_flow(CanonState(phase="live", status="running"))
+    f = _synthesize_live_flow(CanonState(phase="live", status="running"))
     if f.active != "live":
         errors.append(f"live+running: expected active='live', got {f.active!r}")
     for n in ("awaiting", "detected", "onboard", "ready"):
@@ -1303,67 +1308,51 @@ def verify_phases_diagram(
 
     results["unit_tests_passed"] = len(errors) == 0
 
-    # --- Headless render: 7 nodes visible, statuses correct for scaffold phase ---
+    # --- Headless render: both modes side-by-side ---
     async def _run() -> None:
         from textual.app import App, ComposeResult
         from toad.widgets.canon_phase_diagram import CanonPhaseDiagram
         from toad.widgets.automation_dag import DagNode
 
         class PhasesHarness(App[None]):
-            CSS = "Screen { overflow: hidden; } CanonPhaseDiagram { height: 1fr; }"
+            CSS = "Screen { overflow: hidden; }"
 
             def compose(self) -> ComposeResult:
-                yield CanonPhaseDiagram(id="phases")
+                yield CanonPhaseDiagram(mode="build", id="build")
+                yield CanonPhaseDiagram(mode="live", id="live")
 
         app = PhasesHarness()
-        async with app.run_test(size=(120, 20)) as pilot:
-            pane = app.query_one("#phases", CanonPhaseDiagram)
+        async with app.run_test(size=(120, 30)) as pilot:
+            build = app.query_one("#build", CanonPhaseDiagram)
+            live = app.query_one("#live", CanonPhaseDiagram)
 
-            # Wait for the initial empty-state topology rebuild to complete
-            # before overwriting state — otherwise _update_statuses finds no nodes.
             await pilot.pause()
             await pilot.pause()
 
-            # Set scaffold phase state
-            pane.state = CanonState(phase="scaffold", status="running")
+            build.state = CanonState(phase="scaffold", status="running")
+            live.state = CanonState(phase="live", status="onboarding")
             await pilot.pause()
             await pilot.pause()
 
-            # Build mode: 5 nodes
-            nodes = list(app.query(DagNode))
-            results["build_node_count"] = len(nodes)
-            if len(nodes) != 5:
-                errors.append(f"build mode: expected 5 phase nodes, got {len(nodes)}")
+            build_nodes = list(build.query(DagNode))
+            results["build_node_count"] = len(build_nodes)
+            if len(build_nodes) != 5:
+                errors.append(f"build mode: expected 5 nodes, got {len(build_nodes)}")
+            build_map = {n.node_id: n._status for n in build_nodes}
+            if build_map.get("init") != "done":
+                errors.append(f"build init should be done, got {build_map.get('init')!r}")
+            if build_map.get("scaffold") != "running":
+                errors.append(f"build scaffold should be running, got {build_map.get('scaffold')!r}")
 
-            node_map = {n.node_id: n._status for n in nodes}
-            results["build_node_statuses"] = node_map
-
-            if node_map.get("init") != "done":
-                errors.append(f"init should be done, got {node_map.get('init')!r}")
-            if node_map.get("scaffold") != "running":
-                errors.append(f"scaffold should be running, got {node_map.get('scaffold')!r}")
-            if node_map.get("run") != "pending":
-                errors.append(f"run should be pending, got {node_map.get('run')!r}")
-
-            # Swap to live mode — topology rebuilds with the 5 live nodes
-            pane.state = CanonState(phase="live", status="running")
-            await pilot.pause()
-            await pilot.pause()
-
-            live_nodes = list(app.query(DagNode))
+            live_nodes = list(live.query(DagNode))
             results["live_node_count"] = len(live_nodes)
             if len(live_nodes) != 5:
-                errors.append(f"live mode: expected 5 live nodes, got {len(live_nodes)}")
-
+                errors.append(f"live mode: expected 5 nodes, got {len(live_nodes)}")
             live_map = {n.node_id: n._status for n in live_nodes}
-            results["live_node_statuses"] = live_map
-            if live_map.get("live") != "running":
-                errors.append(f"live: 'live' node should be running, got {live_map.get('live')!r}")
+            if live_map.get("onboard") != "running":
+                errors.append(f"live onboard should be running, got {live_map.get('onboard')!r}")
             if live_map.get("awaiting") != "done":
-                errors.append(f"live+running: 'awaiting' should be done, got {live_map.get('awaiting')!r}")
-            # Build-mode node IDs should NOT exist after topology swap
-            if "init" in live_map:
-                errors.append("live mode: build-mode 'init' node should have been replaced")
+                errors.append(f"live awaiting should be done, got {live_map.get('awaiting')!r}")
 
     asyncio.run(_run())
 

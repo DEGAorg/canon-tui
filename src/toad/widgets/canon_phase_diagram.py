@@ -1,15 +1,16 @@
 """CanonPhaseDiagram — system diagram for the canon pipeline phases.
 
-Renders one of two topologies based on CanonState.phase:
+Constructed with a mode (``"build"`` or ``"live"``) and renders the
+corresponding topology:
 
-- **Build mode** (phase ∈ init/scaffold/strategy/develop/run):
-  init → scaffold → strategy → develop → run (5 nodes)
-  Status derived from CanonState.phase.
+- **build** — init → scaffold → strategy → develop → run (5 nodes).
+  Node status derived from CanonState.phase.
 
-- **Live mode** (phase == "live"):
-  Awaiting Funds → Funds Detected → Onboarding → Ready → Running Live
-  Status derived from CanonState.status (live sub-states written by
-  canon-live-readiness.sh).
+- **live** — Awaiting Funds → Funds Detected → Onboarding → Ready →
+  Running Live. Status derived from CanonState.status (live sub-states
+  written by canon-live-readiness.sh).
+
+AutomationPanel mounts two instances and toggles their visibility.
 """
 
 from __future__ import annotations
@@ -131,19 +132,12 @@ def _synthesize_live_flow(state: CanonState) -> FlowState:
     )
 
 
-def _synthesize_flow(state: CanonState) -> FlowState:
-    """Pick the right topology based on phase. live → live diagram, else → build."""
-    if state.phase == "live":
-        return _synthesize_live_flow(state)
-    return _synthesize_build_flow(state)
-
-
 class CanonPhaseDiagram(Widget):
     """System diagram for the canon pipeline.
 
-    Swaps between build-mode and live-mode topologies based on
-    ``CanonState.phase``. ``AutomationDag.update_state`` detects the
-    topology change via ``flow.steps`` and rebuilds the widget tree.
+    Constructed with ``mode="build"`` or ``mode="live"``. AutomationPanel
+    mounts two — one for each mode — and toggles visibility based on
+    the current canon state.
     """
 
     state: reactive[CanonState] = reactive(  # type: ignore[assignment]
@@ -152,7 +146,7 @@ class CanonPhaseDiagram(Widget):
 
     DEFAULT_CSS = """
     CanonPhaseDiagram {
-        height: 1fr;
+        height: 8;
         width: 1fr;
     }
     CanonPhaseDiagram #phases-scroll {
@@ -164,12 +158,21 @@ class CanonPhaseDiagram(Widget):
     }
     """
 
+    def __init__(self, *, mode: str = "build", **kwargs: object) -> None:
+        super().__init__(**kwargs)  # type: ignore[arg-type]
+        if mode not in ("build", "live"):
+            raise ValueError(f"mode must be 'build' or 'live', got {mode!r}")
+        self._mode = mode
+
     def compose(self) -> ComposeResult:
         with HorizontalScroll(id="phases-scroll"):
             yield AutomationDag(id="phases-dag")
 
     def watch_state(self, state: CanonState) -> None:
-        flow = _synthesize_flow(state)
+        if self._mode == "live":
+            flow = _synthesize_live_flow(state)
+        else:
+            flow = _synthesize_build_flow(state)
         synthetic = CanonState(
             phase=state.phase,
             status=state.status,

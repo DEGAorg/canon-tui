@@ -341,6 +341,14 @@ class MainScreen(Screen, can_focus=False):
         """Open pane and show Automation section."""
         self._show_section_tab("section-state", "tab-automation")
 
+    # Backward-compat: older canon-start.md scripts in claude-code-config
+    # still call screen.show_state / screen.hide_state. Forward to the
+    # new automation actions so the panel opens correctly until those
+    # scripts are updated.
+    def action_show_state(self) -> None:
+        """Alias of show_automation for older canon-start.md scripts."""
+        self.action_show_automation()
+
     def action_show_outreach(self) -> None:
         """Open pane and show Outreach section.
 
@@ -377,6 +385,10 @@ class MainScreen(Screen, can_focus=False):
     def action_hide_automation(self) -> None:
         """Hide the Automation section."""
         self._hide_section("section-state")
+
+    def action_hide_state(self) -> None:
+        """Alias of hide_automation for older canon-start.md scripts."""
+        self.action_hide_automation()
 
     def action_hide_outreach(self) -> None:
         """Hide the Outreach section."""

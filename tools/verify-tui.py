@@ -1135,9 +1135,9 @@ def verify_automation_panel(verbose: bool = False) -> tuple[bool, list[str], dic
             await pilot.pause()
             await pilot.pause()
             results["build_phase_tab"] = tabs.active
-            if tabs.active != "tab-system":
+            if tabs.active != "tab-pipeline":
                 errors.append(
-                    f"build phase: expected tab-system, got {tabs.active!r}"
+                    f"build phase: expected tab-pipeline, got {tabs.active!r}"
                 )
 
             from textual.widgets import Static
@@ -1148,15 +1148,15 @@ def verify_automation_panel(verbose: bool = False) -> tuple[bool, list[str], dic
                 errors.append(f"summary missing phase name, got: {initial_text!r}")
 
             # Run phase + non-running status — no auto-switch trigger.
-            tabs.active = "tab-flow"
+            tabs.active = "tab-workflow"
             await pilot.pause()
             panel.state = CanonState(phase="run", status="starting", flow=flow)
             await pilot.pause()
             await pilot.pause()
             results["run_not_running_tab"] = tabs.active
-            if tabs.active != "tab-flow":
+            if tabs.active != "tab-workflow":
                 errors.append(
-                    f"run + non-running: expected tab-flow (manual nav), got {tabs.active!r}"
+                    f"run + non-running: expected tab-workflow (manual nav), got {tabs.active!r}"
                 )
 
             # Run phase + status = "polling" — auto-switch fires (dry-run runner
@@ -1165,9 +1165,9 @@ def verify_automation_panel(verbose: bool = False) -> tuple[bool, list[str], dic
             await pilot.pause()
             await pilot.pause()
             results["after_run_polling_tab"] = tabs.active
-            if tabs.active != "tab-system":
+            if tabs.active != "tab-pipeline":
                 errors.append(
-                    f"run+polling: expected auto-switch to tab-system, got {tabs.active!r}"
+                    f"run+polling: expected auto-switch to tab-pipeline, got {tabs.active!r}"
                 )
             if panel._auto_switched_phase != "run":
                 errors.append(
@@ -1175,15 +1175,15 @@ def verify_automation_panel(verbose: bool = False) -> tuple[bool, list[str], dic
                 )
 
             # User navigates away; phase=live with deposit-pending shouldn't switch.
-            tabs.active = "tab-flow"
+            tabs.active = "tab-workflow"
             await pilot.pause()
             panel.state = CanonState(phase="live", status="deposit-pending", flow=flow)
             await pilot.pause()
             await pilot.pause()
             results["live_awaiting_tab"] = tabs.active
-            if tabs.active != "tab-flow":
+            if tabs.active != "tab-workflow":
                 errors.append(
-                    f"live+deposit-pending: expected tab-flow (manual nav), got {tabs.active!r}"
+                    f"live+deposit-pending: expected tab-workflow (manual nav), got {tabs.active!r}"
                 )
 
             # Live runner running → auto-switch (fresh switch for live phase).
@@ -1191,9 +1191,9 @@ def verify_automation_panel(verbose: bool = False) -> tuple[bool, list[str], dic
             await pilot.pause()
             await pilot.pause()
             results["live_running_tab"] = tabs.active
-            if tabs.active != "tab-system":
+            if tabs.active != "tab-pipeline":
                 errors.append(
-                    f"live+running: expected auto-switch to tab-system, got {tabs.active!r}"
+                    f"live+running: expected auto-switch to tab-pipeline, got {tabs.active!r}"
                 )
             if panel._auto_switched_phase != "live":
                 errors.append(

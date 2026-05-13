@@ -255,9 +255,10 @@ class AutomationPanel(Widget):
         height: auto;
     }
 
-    /* Flow tab */
+    /* Workflow tab — strategy flow.json DAG */
     AutomationPanel #dag-scroll {
-        height: 1fr;
+        height: auto;
+        max-height: 10;
     }
     AutomationPanel #automation-dag {
         height: auto;
@@ -280,7 +281,7 @@ class AutomationPanel(Widget):
     def compose(self) -> ComposeResult:
         yield Static("", id="state-summary")
         with TabbedContent(id="automation-tabs"):
-            with TabPane("System", id="tab-system"):
+            with TabPane("Pipeline", id="tab-pipeline"):
                 with Vertical(id="system-pane"):
                     yield Static(
                         "[green]✓[/] Build pipeline complete",
@@ -292,7 +293,7 @@ class AutomationPanel(Widget):
                         id="live-collapsed",
                     )
                     yield CanonPhaseDiagram(mode="live", id="live-diagram")
-            with TabPane("Flow", id="tab-flow"):
+            with TabPane("Workflow", id="tab-workflow"):
                 with HorizontalScroll(id="dag-scroll"):
                     yield AutomationDag(id="automation-dag")
         with VerticalScroll(id="automation-logs"):
@@ -383,9 +384,9 @@ class AutomationPanel(Widget):
         if is_executing:
             self._auto_switched_phase = state.phase
             tabs = self.query_one("#automation-tabs", TabbedContent)
-            if tabs.active != "tab-system":
+            if tabs.active != "tab-pipeline":
                 self._auto_switching += 1
-                tabs.active = "tab-system"
+                tabs.active = "tab-pipeline"
 
     # ------------------------------------------------------------------
     # State summary (single status row, always visible above tabs)
@@ -444,7 +445,7 @@ class AutomationPanel(Widget):
         self._log_filter = event.node_id
         tabs = self.query_one("#automation-tabs", TabbedContent)
         self._auto_switching += 1
-        tabs.active = "tab-system"
+        tabs.active = "tab-pipeline"
         self.call_after_refresh(self._refresh_logs, self.state)
 
     async def _refresh_logs(self, state: CanonState) -> None:

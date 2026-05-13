@@ -337,9 +337,9 @@ class MainScreen(Screen, can_focus=False):
         """Open pane and show Timeline tab inside Planning."""
         self._show_section_tab("section-planning", "tab-timeline")
 
-    def action_show_state(self) -> None:
-        """Open pane and show State section."""
-        self._show_section_tab("section-state", "tab-builder")
+    def action_show_automation(self) -> None:
+        """Open pane and show Automation section."""
+        self._show_section_tab("section-state", "tab-automation")
 
     def action_show_outreach(self) -> None:
         """Open pane and show Outreach section.
@@ -374,8 +374,8 @@ class MainScreen(Screen, can_focus=False):
         """Hide Planning section (Timeline is a tab inside it)."""
         self._hide_section("section-planning")
 
-    def action_hide_state(self) -> None:
-        """Hide the State section."""
+    def action_hide_automation(self) -> None:
+        """Hide the Automation section."""
         self._hide_section("section-state")
 
     def action_hide_outreach(self) -> None:

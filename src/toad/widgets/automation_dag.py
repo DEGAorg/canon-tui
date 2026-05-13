@@ -21,6 +21,10 @@ _NODE_ICONS: dict[str, str] = {
     "gate":   "◆",
     "deploy": "⬆",
     "review": "◎",
+    "setup":  "⚙",
+    "config": "◎",
+    "runner": "◐",
+    "wallet": "◈",
 }
 
 _STATUS_LINES: dict[str, str] = {

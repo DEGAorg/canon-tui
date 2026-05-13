@@ -2,7 +2,7 @@
 
 **Repo:** `claude-code-config`
 **Requested by:** `canon-tui` — automation panel elapsed-time display
-**Priority:** v2 (v1 uses session-local tracking as a fallback)
+**Priority:** P1 — needed for correct elapsed-time display. TUI has a session-local fallback but it resets on restart; this makes it authoritative.
 
 ---
 

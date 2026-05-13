@@ -13,6 +13,7 @@ from textual.widget import Widget
 from textual.widgets import Static, TabbedContent, TabPane
 
 from toad.widgets.automation_dag import AutomationDag
+from toad.widgets.canon_phase_diagram import CanonPhaseDiagram
 from toad.widgets.canon_state import CanonState, LogEntry
 
 log = logging.getLogger(__name__)
@@ -114,6 +115,9 @@ class AutomationPanel(Widget):
     AutomationPanel #automation-tabs {
         height: 1fr;
     }
+    AutomationPanel #phases-pane {
+        height: 1fr;
+    }
     AutomationPanel #dag-scroll {
         height: 1fr;
     }
@@ -147,14 +151,18 @@ class AutomationPanel(Widget):
         super().__init__(**kwargs)
         self._active_since: datetime | None = None
         self._last_active: str = ""
-        self._user_picked_tab: bool = False
-        self._auto_switching: bool = False
+        self._user_picked_tab: bool = False       # user manually navigated tabs
+        self._switched_to_logs: bool = False      # run-phase auto-switch done (once)
+        self._auto_switching: int = 0             # counter: >0 = programmatic switch in flight
+        self._setup_complete: bool = False
         self._log_filter: str | None = None
 
     def compose(self) -> ComposeResult:
         yield Static("", id="automation-header")
         with TabbedContent(id="automation-tabs"):
-            with TabPane("Diagram", id="tab-diagram"):
+            with TabPane("Phases", id="tab-phases"):
+                yield CanonPhaseDiagram(id="phases-pane")
+            with TabPane("Flow", id="tab-flow"):
                 with HorizontalScroll(id="dag-scroll"):
                     yield AutomationDag(id="automation-dag")
             with TabPane("Logs", id="tab-logs"):
@@ -166,14 +174,18 @@ class AutomationPanel(Widget):
                     )
 
     def on_mount(self) -> None:
-        # Start on Diagram tab; auto-switch to Logs once run phase begins
-        tabs = self.query_one("#automation-tabs", TabbedContent)
-        tabs.active = "tab-diagram"
+        # Mark setup complete after the first refresh so initial TabActivated
+        # messages don't get mistaken for user tab selections.
+        self.call_after_refresh(self._mark_setup_complete)
+
+    def _mark_setup_complete(self) -> None:
+        self._setup_complete = True
 
     def watch_state(self, state: CanonState) -> None:
         self._track_elapsed(state)
         self._maybe_auto_switch(state)
         self._refresh_header(state)
+        self.query_one("#phases-pane", CanonPhaseDiagram).state = state
         self.query_one("#automation-dag", AutomationDag).update_state(state)
         self.call_after_refresh(self._refresh_logs, state)
 
@@ -184,18 +196,33 @@ class AutomationPanel(Widget):
     def on_tabbed_content_tab_activated(
         self, event: TabbedContent.TabActivated
     ) -> None:
-        if not self._auto_switching:
+        if self._auto_switching > 0:
+            self._auto_switching -= 1
+        elif self._setup_complete:
             self._user_picked_tab = True
 
     def _maybe_auto_switch(self, state: CanonState) -> None:
-        if self._user_picked_tab:
-            return
         tabs = self.query_one("#automation-tabs", TabbedContent)
-        if state.is_run_phase and tabs.active != "tab-logs":
-            self._auto_switching = True
-            tabs.active = "tab-logs"
-            self._auto_switching = False
-            self._user_picked_tab = True  # switch once, never again
+
+        # Run phase: switch to logs exactly once, regardless of user navigation.
+        if state.is_run_phase and not self._switched_to_logs:
+            self._switched_to_logs = True
+            if tabs.active != "tab-logs":
+                self._auto_switching += 1
+                tabs.active = "tab-logs"
+            return
+
+        # Build phase: surface the Flow tab when strategy data first arrives,
+        # but only if the user hasn't manually chosen a tab yet.
+        if (
+            not self._user_picked_tab
+            and state.is_build_phase
+            and state.flow
+            and state.flow.steps
+            and tabs.active == "tab-phases"
+        ):
+            self._auto_switching += 1
+            tabs.active = "tab-flow"
 
     # ------------------------------------------------------------------
     # Header
@@ -244,9 +271,8 @@ class AutomationPanel(Widget):
         """Switch to Logs tab and filter to the selected node's step."""
         self._log_filter = event.node_id
         tabs = self.query_one("#automation-tabs", TabbedContent)
-        self._auto_switching = True
-        tabs.active = "tab-logs"
-        self._auto_switching = False
+        self._auto_switching += 1
+        tabs.active = "tab-logs"  # Enter on a flow node → jump to logs
         self.call_after_refresh(self._refresh_logs, self.state)
 
     async def _refresh_logs(self, state: CanonState) -> None:

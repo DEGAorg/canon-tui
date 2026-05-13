@@ -955,6 +955,350 @@ def verify_plan_execution(verbose: bool = False) -> bool:
     return len(errors) == 0, errors, results
 
 
+def verify_automation_dag(verbose: bool = False) -> tuple[bool, list[str], dict[str, object]]:
+    """Verify AutomationDag: layout algorithm + headless rendering."""
+    from toad.widgets.automation_dag import _compute_layers, AutomationDag, DagNode
+    from toad.widgets.canon_state import FlowEdge, FlowNode, FlowState, CanonState
+
+    errors: list[str] = []
+    results: dict[str, object] = {}
+
+    # --- Test 1: Pure layout algorithm ---
+
+    # Linear: 4 nodes, straight chain
+    linear_nodes = (
+        FlowNode("a", "Init"),
+        FlowNode("b", "Scaffold"),
+        FlowNode("c", "Strategy"),
+        FlowNode("d", "Develop"),
+    )
+    linear_edges = (
+        FlowEdge("a", "b"),
+        FlowEdge("b", "c"),
+        FlowEdge("c", "d"),
+    )
+    layers = _compute_layers(linear_nodes, linear_edges)
+    results["linear_layer_count"] = len(layers)
+    if len(layers) != 4:
+        errors.append(f"linear DAG: expected 4 layers, got {len(layers)}")
+    if any(len(layer) != 1 for layer in layers):
+        errors.append("linear DAG: each layer should have exactly 1 node")
+
+    # Fan-out / fan-in: init → scaffold + research → strategy → develop
+    fan_nodes = (
+        FlowNode("init",     "Init"),
+        FlowNode("scaffold", "Scaffold"),
+        FlowNode("research", "Research"),
+        FlowNode("strategy", "Strategy", "gate"),
+        FlowNode("develop",  "Develop"),
+    )
+    fan_edges = (
+        FlowEdge("init",     "scaffold"),
+        FlowEdge("init",     "research"),
+        FlowEdge("scaffold", "strategy"),
+        FlowEdge("research", "strategy"),
+        FlowEdge("strategy", "develop"),
+    )
+    fan_layers = _compute_layers(fan_nodes, fan_edges)
+    results["fan_layer_count"] = len(fan_layers)
+    results["fan_parallel_layer_size"] = max(len(l) for l in fan_layers)
+    if len(fan_layers) < 3:
+        errors.append(f"fan-in DAG: expected >=3 layers, got {len(fan_layers)}")
+    parallel = [layer for layer in fan_layers if len(layer) == 2]
+    if not parallel:
+        errors.append("fan-in DAG: expected exactly one layer with 2 parallel nodes")
+
+    # Empty graph
+    empty_layers = _compute_layers((), ())
+    if empty_layers:
+        errors.append(f"empty graph should produce no layers, got {empty_layers}")
+
+    results["layout_algorithm"] = "ok" if not errors else "fail"
+
+    # --- Test 2: Headless widget rendering ---
+
+    from textual.app import App, ComposeResult
+    from textual.containers import HorizontalScroll
+
+    async def _run() -> None:
+        flow_linear = FlowState(
+            steps=("a", "b", "c", "d"),
+            active="b",
+            completed=("a",),
+        )
+
+        class DagHarness(App[None]):
+            CSS = "Screen { overflow: hidden; } AutomationDag { height: auto; }"
+
+            def compose(self) -> ComposeResult:
+                with HorizontalScroll():
+                    yield AutomationDag(id="dag")
+
+        app = DagHarness()
+        async with app.run_test(size=(120, 30)) as pilot:
+            dag = app.query_one("#dag", AutomationDag)
+
+            # Load linear flow and let rebuild settle
+            dag.update_state(CanonState(phase="scaffold", flow=flow_linear))
+            await pilot.pause()
+            await pilot.pause()
+
+            nodes = app.query(DagNode)
+            results["linear_node_count"] = len(nodes)
+            if len(nodes) != 4:
+                errors.append(f"linear render: expected 4 DagNode widgets, got {len(nodes)}")
+
+            # Node "a" should be done (green), "b" running (yellow), rest pending
+            node_a = next((n for n in nodes if n.node_id == "a"), None)
+            node_b = next((n for n in nodes if n.node_id == "b"), None)
+            node_c = next((n for n in nodes if n.node_id == "c"), None)
+
+            if node_a:
+                results["node_a_status"] = "done" if "status-done" in node_a.classes else node_a.classes
+                if "status-done" not in node_a.classes:
+                    errors.append(f"node 'a' should have status-done, got classes: {node_a.classes}")
+            else:
+                errors.append("node 'a' not found")
+
+            if node_b:
+                results["node_b_status"] = "running" if "status-running" in node_b.classes else node_b.classes
+                if "status-running" not in node_b.classes:
+                    errors.append(f"node 'b' should have status-running, got classes: {node_b.classes}")
+            else:
+                errors.append("node 'b' not found")
+
+            if node_c:
+                results["node_c_status"] = "pending" if "status-pending" in node_c.classes else node_c.classes
+                if "status-pending" not in node_c.classes:
+                    errors.append(f"node 'c' should have status-pending, got classes: {node_c.classes}")
+            else:
+                errors.append("node 'c' not found")
+
+            # Fast-path status update (no topology change)
+            flow_progressed = FlowState(
+                steps=("a", "b", "c", "d"),
+                active="c",
+                completed=("a", "b"),
+            )
+            dag.update_state(CanonState(phase="scaffold", flow=flow_progressed))
+            await pilot.pause()
+
+            node_b_after = next((n for n in app.query(DagNode) if n.node_id == "b"), None)
+            if node_b_after:
+                results["node_b_after_progress"] = "done" if "status-done" in node_b_after.classes else node_b_after.classes
+                if "status-done" not in node_b_after.classes:
+                    errors.append("node 'b' should be done after progress, status-update (fast path) not working")
+            else:
+                errors.append("node 'b' not found after progress")
+
+    asyncio.run(_run())
+
+    if verbose:
+        for key, val in results.items():
+            console.print(f"  {key}: {val}")
+
+    return len(errors) == 0, errors, results
+
+
+def verify_automation_panel(verbose: bool = False) -> tuple[bool, list[str], dict[str, object]]:
+    """Verify AutomationPanel: header strip, tabs, auto-switch behaviour."""
+    errors: list[str] = []
+    results: dict[str, object] = {}
+
+    from textual.app import App, ComposeResult
+    from textual.widgets import TabbedContent
+
+    from toad.widgets.automation_panel import AutomationPanel
+    from toad.widgets.canon_state import CanonState, FlowState
+
+    flow = FlowState(
+        steps=("init", "scaffold", "develop"),
+        labels=(("init", "Init"), ("scaffold", "Scaffold"), ("develop", "Develop")),
+        active="scaffold",
+        completed=("init",),
+    )
+
+    async def _run() -> None:
+        class PanelHarness(App[None]):
+            CSS = "Screen { overflow: hidden; } AutomationPanel { height: 1fr; }"
+
+            def compose(self) -> ComposeResult:
+                yield AutomationPanel(id="panel")
+
+        app = PanelHarness()
+        async with app.run_test(size=(100, 30)) as pilot:
+            panel = app.query_one("#panel", AutomationPanel)
+            tabs = app.query_one("#automation-tabs", TabbedContent)
+
+            # Build phase with flow data → auto-switches to Flow tab
+            panel.state = CanonState(phase="scaffold", flow=flow)
+            await pilot.pause()
+            await pilot.pause()
+
+            results["build_phase_tab"] = tabs.active
+            if tabs.active != "tab-flow":
+                errors.append(f"build phase with flow: expected tab-flow, got {tabs.active!r}")
+
+            # Header should contain the phase name
+            from textual.widgets import Static
+            header = app.query_one("#automation-header", Static)
+            header_text = str(header.content)
+            results["header_has_phase"] = "scaffold" in header_text
+            if "scaffold" not in header_text:
+                errors.append(f"header missing phase name, got: {header_text!r}")
+
+            # Transition to run phase → should auto-switch to Logs
+            panel.state = CanonState(phase="run", flow=flow)
+            await pilot.pause()
+            await pilot.pause()
+
+            results["after_run_tab"] = tabs.active
+            if tabs.active != "tab-logs":
+                errors.append(f"run phase: expected auto-switch to tab-logs, got {tabs.active!r}")
+
+            # Second run-phase update → must NOT switch tabs (locked after run)
+            panel.state = CanonState(phase="run", flow=flow)
+            await pilot.pause()
+
+            results["after_second_run_tab"] = tabs.active
+            if tabs.active != "tab-logs":
+                errors.append(f"second run update should stay on tab-logs, got {tabs.active!r}")
+
+            # switched_to_logs should be True now (run-phase lock)
+            results["switched_to_logs_locked"] = panel._switched_to_logs
+            if not panel._switched_to_logs:
+                errors.append("_switched_to_logs should be True after run-phase switch")
+
+            # No crash on missing flow
+            panel.state = CanonState(phase="")
+            await pilot.pause()
+            results["empty_state_no_crash"] = True
+
+    asyncio.run(_run())
+
+    if verbose:
+        for key, val in results.items():
+            console.print(f"  {key}: {val}")
+
+    return len(errors) == 0, errors, results
+
+
+def verify_phases_diagram(
+    verbose: bool = False,
+) -> tuple[bool, list[str], dict[str, object]]:
+    """Verify CanonPhaseDiagram: topology, status derivation, headless render."""
+    import asyncio
+
+    errors: list[str] = []
+    results: dict[str, object] = {}
+
+    # --- Unit: _synthesize_flow status derivation ---
+    from toad.widgets.canon_state import CanonState
+    from toad.widgets.canon_phase_diagram import _synthesize_flow, PHASE_ORDER
+
+    def check_flow(phase: str, status: str = "running") -> None:
+        state = CanonState(phase=phase, status=status)
+        flow = _synthesize_flow(state)
+        results[f"flow_{phase}_active"] = flow.active
+        results[f"flow_{phase}_completed"] = flow.completed
+
+    # No phase — all pending
+    check_flow("")
+    if _synthesize_flow(CanonState(phase="")).active != "":
+        errors.append("empty phase: expected active=''")
+
+    # init phase — init running, others pending
+    f = _synthesize_flow(CanonState(phase="init", status="running"))
+    if f.active != "init":
+        errors.append(f"init phase: expected active='init', got {f.active!r}")
+
+    # scaffold phase — init done, scaffold running
+    f = _synthesize_flow(CanonState(phase="scaffold", status="running"))
+    if f.active != "scaffold":
+        errors.append(f"scaffold phase: expected active='scaffold', got {f.active!r}")
+    if "init" not in f.completed:
+        errors.append("scaffold phase: init should be done")
+
+    # run phase — all before run are done
+    f = _synthesize_flow(CanonState(phase="run", status="running"))
+    if f.active != "run":
+        errors.append(f"run phase: expected active='run', got {f.active!r}")
+    for p in ("init", "scaffold", "strategy", "develop"):
+        if p not in f.completed:
+            errors.append(f"run phase: {p!r} should be done")
+
+    # live phase — run + all done, live running
+    f = _synthesize_flow(CanonState(phase="live", status="running"))
+    if f.active != "live":
+        errors.append(f"live phase: expected active='live', got {f.active!r}")
+    if "run" not in f.completed:
+        errors.append("live phase: run should be done")
+
+    results["unit_tests_passed"] = len(errors) == 0
+
+    # --- Headless render: 7 nodes visible, statuses correct for scaffold phase ---
+    async def _run() -> None:
+        from textual.app import App, ComposeResult
+        from toad.widgets.canon_phase_diagram import CanonPhaseDiagram
+        from toad.widgets.automation_dag import DagNode
+
+        class PhasesHarness(App[None]):
+            CSS = "Screen { overflow: hidden; } CanonPhaseDiagram { height: 1fr; }"
+
+            def compose(self) -> ComposeResult:
+                yield CanonPhaseDiagram(id="phases")
+
+        app = PhasesHarness()
+        async with app.run_test(size=(120, 20)) as pilot:
+            pane = app.query_one("#phases", CanonPhaseDiagram)
+
+            # Wait for the initial empty-state topology rebuild to complete
+            # before overwriting state — otherwise _update_statuses finds no nodes.
+            await pilot.pause()
+            await pilot.pause()
+
+            # Set scaffold phase state
+            pane.state = CanonState(phase="scaffold", status="running")
+            await pilot.pause()
+            await pilot.pause()
+
+            nodes = list(app.query(DagNode))
+            results["node_count"] = len(nodes)
+            if len(nodes) != 6:
+                errors.append(f"expected 6 phase nodes, got {len(nodes)}")
+
+            # Check statuses
+            node_map = {n.node_id: n._status for n in nodes}
+            results["node_statuses"] = node_map
+
+            if node_map.get("init") != "done":
+                errors.append(f"init should be done, got {node_map.get('init')!r}")
+            if node_map.get("scaffold") != "running":
+                errors.append(f"scaffold should be running, got {node_map.get('scaffold')!r}")
+            if node_map.get("live") != "pending":
+                errors.append(f"live should be pending, got {node_map.get('live')!r}")
+
+            # Advance to live phase
+            pane.state = CanonState(phase="live", status="running")
+            await pilot.pause()
+            await pilot.pause()
+
+            node_map2 = {n.node_id: n._status for n in app.query(DagNode)}
+            results["live_phase_statuses"] = node_map2
+            if node_map2.get("live") != "running":
+                errors.append(f"live phase: live node should be running, got {node_map2.get('live')!r}")
+            if node_map2.get("run") != "done":
+                errors.append(f"live phase: run should be done, got {node_map2.get('run')!r}")
+
+    asyncio.run(_run())
+
+    if verbose:
+        for key, val in results.items():
+            console.print(f"  {key}: {val}")
+
+    return len(errors) == 0, errors, results
+
+
 def verify_imports(verbose: bool = False) -> bool:
     """Verify all key modules import without error."""
     errors: list[str] = []
@@ -982,6 +1326,9 @@ def verify_imports(verbose: bool = False) -> bool:
         "toad.widgets.plan_worker_log_pane",
         "toad.widgets.plan_execution_tab",
         "toad.widgets.plan_execution_section",
+        "toad.widgets.automation_dag",
+        "toad.widgets.automation_panel",
+        "toad.widgets.canon_phase_diagram",
     ]
     for mod in modules:
         try:
@@ -1006,6 +1353,9 @@ def main() -> None:
             "outreach",
             "growth",
             "plan-execution",
+            "automation-dag",
+            "automation-panel",
+            "phases-diagram",
             "live",
             "all",
         ],
@@ -1022,6 +1372,9 @@ def main() -> None:
         "outreach": verify_outreach,
         "growth": verify_growth,
         "plan-execution": verify_plan_execution,
+        "automation-dag": verify_automation_dag,
+        "automation-panel": verify_automation_panel,
+        "phases-diagram": verify_phases_diagram,
     }
     # Live probe only runs when explicitly requested — it hits the network.
     if args.widget == "live":

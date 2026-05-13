@@ -27,11 +27,11 @@ from toad.widgets.canon_state import CanonState, FlowEdge, FlowNode, FlowState
 BUILD_ORDER: tuple[str, ...] = ("init", "scaffold", "strategy", "develop", "run")
 
 _BUILD_NODES: tuple[FlowNode, ...] = (
-    FlowNode(id="init",     label="Canon Framework", type="setup"),
-    FlowNode(id="scaffold", label="Project Files",   type="build"),
-    FlowNode(id="strategy", label="Strategy Spec",   type="config"),
-    FlowNode(id="develop",  label="Strategy Code",   type="build"),
-    FlowNode(id="run",      label="Dry Run",         type="runner"),
+    FlowNode(id="init",     label="Canon Setup",   type="setup"),
+    FlowNode(id="scaffold", label="Scaffold",      type="build"),
+    FlowNode(id="strategy", label="Strategy Spec", type="config"),
+    FlowNode(id="develop",  label="Implementation", type="build"),
+    FlowNode(id="run",      label="Dry Run",       type="runner"),
 )
 
 _BUILD_EDGES: tuple[FlowEdge, ...] = (

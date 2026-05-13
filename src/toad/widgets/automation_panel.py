@@ -307,9 +307,17 @@ class AutomationPanel(Widget):
         # Mark setup complete after first refresh so initial TabActivated
         # messages don't get mistaken for user tab selections.
         self.call_after_refresh(self._mark_setup_complete)
+        # Tick once a second so the elapsed-time display keeps moving
+        # between state.json updates (which only land every few seconds).
+        self.set_interval(1.0, self._tick_elapsed)
 
     def _mark_setup_complete(self) -> None:
         self._setup_complete = True
+
+    def _tick_elapsed(self) -> None:
+        """Refresh the state summary so the elapsed counter ticks each second."""
+        if self.state.phase:
+            self._refresh_state_summary(self.state)
 
     def watch_state(self, state: CanonState) -> None:
         self._track_elapsed(state)

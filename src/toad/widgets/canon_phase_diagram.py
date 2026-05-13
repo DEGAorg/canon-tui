@@ -27,11 +27,11 @@ from toad.widgets.canon_state import CanonState, FlowEdge, FlowNode, FlowState
 BUILD_ORDER: tuple[str, ...] = ("init", "scaffold", "strategy", "develop", "run")
 
 _BUILD_NODES: tuple[FlowNode, ...] = (
-    FlowNode(id="init",     label="Canon Setup",   type="setup"),
-    FlowNode(id="scaffold", label="Scaffold",      type="build"),
-    FlowNode(id="strategy", label="Strategy Spec", type="config"),
-    FlowNode(id="develop",  label="Implementation", type="build"),
-    FlowNode(id="run",      label="Dry Run",       type="runner"),
+    FlowNode(id="init",     label="Canon",    type="setup"),
+    FlowNode(id="scaffold", label="Scaffold", type="build"),
+    FlowNode(id="strategy", label="Strategy", type="config"),
+    FlowNode(id="develop",  label="Develop",  type="build"),
+    FlowNode(id="run",      label="Dry Run",  type="runner"),
 )
 
 _BUILD_EDGES: tuple[FlowEdge, ...] = (
@@ -47,11 +47,11 @@ LIVE_ORDER: tuple[str, ...] = (
 )
 
 _LIVE_NODES: tuple[FlowNode, ...] = (
-    FlowNode(id="awaiting", label="Awaiting Funds", type="setup"),
-    FlowNode(id="detected", label="Funds Detected", type="config"),
-    FlowNode(id="onboard",  label="Onboarding",     type="build"),
-    FlowNode(id="ready",    label="Ready",          type="config"),
-    FlowNode(id="live",     label="Running Live",   type="deploy"),
+    FlowNode(id="awaiting", label="Awaiting", type="setup"),
+    FlowNode(id="detected", label="Detected", type="config"),
+    FlowNode(id="onboard",  label="Onboard",  type="build"),
+    FlowNode(id="ready",    label="Ready",    type="config"),
+    FlowNode(id="live",     label="Live",     type="deploy"),
 )
 
 _LIVE_EDGES: tuple[FlowEdge, ...] = (

@@ -1001,7 +1001,7 @@ def verify_automation_dag(verbose: bool = False) -> tuple[bool, list[str], dict[
     )
     fan_layers = _compute_layers(fan_nodes, fan_edges)
     results["fan_layer_count"] = len(fan_layers)
-    results["fan_parallel_layer_size"] = max(len(l) for l in fan_layers)
+    results["fan_parallel_layer_size"] = max(len(layer) for layer in fan_layers)
     if len(fan_layers) < 3:
         errors.append(f"fan-in DAG: expected >=3 layers, got {len(fan_layers)}")
     parallel = [layer for layer in fan_layers if len(layer) == 2]
@@ -1149,27 +1149,65 @@ def verify_automation_panel(verbose: bool = False) -> tuple[bool, list[str], dic
             if "scaffold" not in header_text:
                 errors.append(f"header missing phase name, got: {header_text!r}")
 
-            # Transition to run phase → should auto-switch to Logs
-            panel.state = CanonState(phase="run", flow=flow)
+            # Run phase BUT status not "running" — no auto-switch yet
+            panel.state = CanonState(phase="run", status="starting", flow=flow)
+            await pilot.pause()
+            await pilot.pause()
+            results["run_not_running_tab"] = tabs.active
+            if tabs.active != "tab-phases":
+                errors.append(
+                    f"run phase + non-running status: expected tab-phases, got {tabs.active!r}"
+                )
+
+            # Run phase + status == "running" → auto-switch to Logs
+            panel.state = CanonState(phase="run", status="running", flow=flow)
             await pilot.pause()
             await pilot.pause()
 
             results["after_run_tab"] = tabs.active
             if tabs.active != "tab-logs":
-                errors.append(f"run phase: expected auto-switch to tab-logs, got {tabs.active!r}")
+                errors.append(f"run+running: expected auto-switch to tab-logs, got {tabs.active!r}")
 
-            # Second run-phase update → must NOT switch tabs (locked after run)
-            panel.state = CanonState(phase="run", flow=flow)
+            # Second run-running update → no tab change (already switched for this phase)
+            panel.state = CanonState(phase="run", status="running", flow=flow)
             await pilot.pause()
 
             results["after_second_run_tab"] = tabs.active
             if tabs.active != "tab-logs":
-                errors.append(f"second run update should stay on tab-logs, got {tabs.active!r}")
+                errors.append(f"second run-running should stay on tab-logs, got {tabs.active!r}")
 
-            # switched_to_logs should be True now (run-phase lock)
-            results["switched_to_logs_locked"] = panel._switched_to_logs
-            if not panel._switched_to_logs:
-                errors.append("_switched_to_logs should be True after run-phase switch")
+            results["auto_switched_phase"] = panel._auto_switched_phase
+            if panel._auto_switched_phase != "run":
+                errors.append(
+                    f"_auto_switched_phase should be 'run', got {panel._auto_switched_phase!r}"
+                )
+
+            # Live mode: phase transitions to "live" with status="deposit-pending".
+            # User goes back to Phases manually; should NOT auto-switch again yet.
+            tabs.active = "tab-phases"
+            await pilot.pause()
+            panel.state = CanonState(phase="live", status="deposit-pending", flow=flow)
+            await pilot.pause()
+            await pilot.pause()
+            results["live_awaiting_tab"] = tabs.active
+            if tabs.active != "tab-phases":
+                errors.append(
+                    f"live+deposit-pending: expected to stay on tab-phases, got {tabs.active!r}"
+                )
+
+            # Live runner actually running → auto-switch to Logs (fresh switch for live phase)
+            panel.state = CanonState(phase="live", status="running", flow=flow)
+            await pilot.pause()
+            await pilot.pause()
+            results["live_running_tab"] = tabs.active
+            if tabs.active != "tab-logs":
+                errors.append(
+                    f"live+running: expected auto-switch to tab-logs, got {tabs.active!r}"
+                )
+            if panel._auto_switched_phase != "live":
+                errors.append(
+                    f"_auto_switched_phase should be 'live', got {panel._auto_switched_phase!r}"
+                )
 
             # Logs tab state summary shows phase + status + metrics
             summary = app.query_one("#logs-state-summary", Static)
@@ -1215,32 +1253,25 @@ def verify_phases_diagram(
 
     # --- Unit: _synthesize_flow status derivation ---
     from toad.widgets.canon_state import CanonState
-    from toad.widgets.canon_phase_diagram import _synthesize_flow, PHASE_ORDER
-
-    def check_flow(phase: str, status: str = "running") -> None:
-        state = CanonState(phase=phase, status=status)
-        flow = _synthesize_flow(state)
-        results[f"flow_{phase}_active"] = flow.active
-        results[f"flow_{phase}_completed"] = flow.completed
+    from toad.widgets.canon_phase_diagram import _synthesize_flow
 
     # No phase — all pending
-    check_flow("")
     if _synthesize_flow(CanonState(phase="")).active != "":
         errors.append("empty phase: expected active=''")
 
-    # init phase — init running, others pending
+    # Build mode: init phase — init running
     f = _synthesize_flow(CanonState(phase="init", status="running"))
     if f.active != "init":
         errors.append(f"init phase: expected active='init', got {f.active!r}")
 
-    # scaffold phase — init done, scaffold running
+    # Build mode: scaffold — init done, scaffold running
     f = _synthesize_flow(CanonState(phase="scaffold", status="running"))
     if f.active != "scaffold":
         errors.append(f"scaffold phase: expected active='scaffold', got {f.active!r}")
     if "init" not in f.completed:
         errors.append("scaffold phase: init should be done")
 
-    # run phase — all before run are done
+    # Build mode: run — all before run done
     f = _synthesize_flow(CanonState(phase="run", status="running"))
     if f.active != "run":
         errors.append(f"run phase: expected active='run', got {f.active!r}")
@@ -1248,12 +1279,27 @@ def verify_phases_diagram(
         if p not in f.completed:
             errors.append(f"run phase: {p!r} should be done")
 
-    # live phase — run + all done, live running
+    # Live mode: live + deposit-pending → awaiting active
+    f = _synthesize_flow(CanonState(phase="live", status="deposit-pending"))
+    if f.active != "awaiting":
+        errors.append(f"live+deposit-pending: expected active='awaiting', got {f.active!r}")
+    results["live_steps"] = f.steps
+
+    # Live mode: live + onboarding → previous nodes done, onboard active
+    f = _synthesize_flow(CanonState(phase="live", status="onboarding"))
+    if f.active != "onboard":
+        errors.append(f"live+onboarding: expected active='onboard', got {f.active!r}")
+    for n in ("awaiting", "detected"):
+        if n not in f.completed:
+            errors.append(f"live+onboarding: {n!r} should be done")
+
+    # Live mode: live + running → all before live done, live active
     f = _synthesize_flow(CanonState(phase="live", status="running"))
     if f.active != "live":
-        errors.append(f"live phase: expected active='live', got {f.active!r}")
-    if "run" not in f.completed:
-        errors.append("live phase: run should be done")
+        errors.append(f"live+running: expected active='live', got {f.active!r}")
+    for n in ("awaiting", "detected", "onboard", "ready"):
+        if n not in f.completed:
+            errors.append(f"live+running: {n!r} should be done")
 
     results["unit_tests_passed"] = len(errors) == 0
 
@@ -1283,33 +1329,41 @@ def verify_phases_diagram(
             await pilot.pause()
             await pilot.pause()
 
+            # Build mode: 5 nodes
             nodes = list(app.query(DagNode))
-            results["node_count"] = len(nodes)
-            if len(nodes) != 6:
-                errors.append(f"expected 6 phase nodes, got {len(nodes)}")
+            results["build_node_count"] = len(nodes)
+            if len(nodes) != 5:
+                errors.append(f"build mode: expected 5 phase nodes, got {len(nodes)}")
 
-            # Check statuses
             node_map = {n.node_id: n._status for n in nodes}
-            results["node_statuses"] = node_map
+            results["build_node_statuses"] = node_map
 
             if node_map.get("init") != "done":
                 errors.append(f"init should be done, got {node_map.get('init')!r}")
             if node_map.get("scaffold") != "running":
                 errors.append(f"scaffold should be running, got {node_map.get('scaffold')!r}")
-            if node_map.get("live") != "pending":
-                errors.append(f"live should be pending, got {node_map.get('live')!r}")
+            if node_map.get("run") != "pending":
+                errors.append(f"run should be pending, got {node_map.get('run')!r}")
 
-            # Advance to live phase
+            # Swap to live mode — topology rebuilds with the 5 live nodes
             pane.state = CanonState(phase="live", status="running")
             await pilot.pause()
             await pilot.pause()
 
-            node_map2 = {n.node_id: n._status for n in app.query(DagNode)}
-            results["live_phase_statuses"] = node_map2
-            if node_map2.get("live") != "running":
-                errors.append(f"live phase: live node should be running, got {node_map2.get('live')!r}")
-            if node_map2.get("run") != "done":
-                errors.append(f"live phase: run should be done, got {node_map2.get('run')!r}")
+            live_nodes = list(app.query(DagNode))
+            results["live_node_count"] = len(live_nodes)
+            if len(live_nodes) != 5:
+                errors.append(f"live mode: expected 5 live nodes, got {len(live_nodes)}")
+
+            live_map = {n.node_id: n._status for n in live_nodes}
+            results["live_node_statuses"] = live_map
+            if live_map.get("live") != "running":
+                errors.append(f"live: 'live' node should be running, got {live_map.get('live')!r}")
+            if live_map.get("awaiting") != "done":
+                errors.append(f"live+running: 'awaiting' should be done, got {live_map.get('awaiting')!r}")
+            # Build-mode node IDs should NOT exist after topology swap
+            if "init" in live_map:
+                errors.append("live mode: build-mode 'init' node should have been replaced")
 
     asyncio.run(_run())
 

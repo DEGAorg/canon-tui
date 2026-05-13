@@ -177,9 +177,9 @@ class AutomationPanel(Widget):
         super().__init__(**kwargs)
         self._active_since: datetime | None = None
         self._last_active: str = ""
-        self._user_picked_tab: bool = False       # user manually navigated tabs
-        self._switched_to_logs: bool = False      # run-phase auto-switch done (once)
-        self._auto_switching: int = 0             # counter: >0 = programmatic switch in flight
+        self._user_picked_tab: bool = False         # user manually navigated tabs
+        self._auto_switched_phase: str = ""         # phase we last auto-switched to Logs for
+        self._auto_switching: int = 0               # counter: >0 = programmatic switch in flight
         self._setup_complete: bool = False
         self._log_filter: str | None = None
 
@@ -233,11 +233,17 @@ class AutomationPanel(Widget):
             self._user_picked_tab = True
 
     def _maybe_auto_switch(self, state: CanonState) -> None:
-        # Auto-switch to Logs exactly once when we reach the run phase.
-        # No other auto-switches: build phases stay on Phases, Flow tab is
-        # only reached by manual navigation.
-        if state.is_run_phase and not self._switched_to_logs:
-            self._switched_to_logs = True
+        # Auto-switch to Logs when the runner is actually running.
+        # Fires once per execution phase: dry-run (phase=run) and live
+        # (phase=live) each get their own auto-switch. No other auto-
+        # switches — build phases stay on Phases.
+        is_running_now = (
+            state.phase in ("run", "live")
+            and state.status == "running"
+            and self._auto_switched_phase != state.phase
+        )
+        if is_running_now:
+            self._auto_switched_phase = state.phase
             tabs = self.query_one("#automation-tabs", TabbedContent)
             if tabs.active != "tab-logs":
                 self._auto_switching += 1

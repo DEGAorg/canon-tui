@@ -296,7 +296,12 @@ class AutomationDag(Widget, can_focus=True):
             to_mount.append(DagLayer(layer_nodes, classes="dag-layer"))
 
         await canvas.mount_all(to_mount)
-        self._focus_node(0, 0)
+        # Don't auto-focus the first node on rebuild — focusing a node
+        # inside a hidden TabPane causes TabbedContent to switch to that
+        # tab. The user can press Tab/click to give focus, then h/j/k/l
+        # to navigate.
+        self._focused_layer = 0
+        self._focused_index = 0
 
     def _update_statuses(self, flow: FlowState) -> None:
         """Fast path: mutate CSS classes on existing DagNode widgets."""

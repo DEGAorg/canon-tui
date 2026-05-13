@@ -1130,14 +1130,16 @@ def verify_automation_panel(verbose: bool = False) -> tuple[bool, list[str], dic
             panel = app.query_one("#panel", AutomationPanel)
             tabs = app.query_one("#automation-tabs", TabbedContent)
 
-            # Build phase with flow data → auto-switches to Flow tab
+            # Build phase: stay on Phases (no auto-switch to Flow).
             panel.state = CanonState(phase="scaffold", flow=flow)
             await pilot.pause()
             await pilot.pause()
 
             results["build_phase_tab"] = tabs.active
-            if tabs.active != "tab-flow":
-                errors.append(f"build phase with flow: expected tab-flow, got {tabs.active!r}")
+            if tabs.active != "tab-phases":
+                errors.append(
+                    f"build phase: expected tab-phases (no auto-switch), got {tabs.active!r}"
+                )
 
             # Header should contain the phase name
             from textual.widgets import Static
@@ -1168,6 +1170,25 @@ def verify_automation_panel(verbose: bool = False) -> tuple[bool, list[str], dic
             results["switched_to_logs_locked"] = panel._switched_to_logs
             if not panel._switched_to_logs:
                 errors.append("_switched_to_logs should be True after run-phase switch")
+
+            # Logs tab state summary shows phase + status + metrics
+            summary = app.query_one("#logs-state-summary", Static)
+            panel.state = CanonState(
+                phase="run",
+                status="running",
+                iteration=5,
+                metrics=(("cycles", "47"), ("trades", "0")),
+                flow=flow,
+            )
+            await pilot.pause()
+            summary_text = str(summary.content)
+            results["summary_has_status"] = "running" in summary_text
+            results["summary_has_metrics"] = "Runs" in summary_text or "cycles" in summary_text
+            results["summary_has_iter"] = "iter 5" in summary_text
+            if "running" not in summary_text:
+                errors.append(f"logs summary missing status, got: {summary_text!r}")
+            if "iter 5" not in summary_text:
+                errors.append(f"logs summary missing iteration, got: {summary_text!r}")
 
             # No crash on missing flow
             panel.state = CanonState(phase="")

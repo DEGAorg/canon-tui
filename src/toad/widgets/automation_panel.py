@@ -29,7 +29,25 @@ LOG_LEVEL_COLORS: dict[str, str] = {
 }
 
 PHASE_ICONS: dict[str, str] = {
-    "run": "▶",
+    "init":     "⚙",
+    "scaffold": "▶",
+    "strategy": "◎",
+    "develop":  "▶",
+    "run":      "▶",
+    "live":     "⬆",
+}
+
+STATUS_COLORS: dict[str, str] = {
+    "running":           "green",
+    "polling":           "cyan",
+    "complete":          "cyan",
+    "waiting_for_input": "yellow",
+    "waiting":           "yellow",
+    "ready":             "green",
+    "error":             "red",
+    "timeout":           "red",
+    "idle":              "dim",
+    "":                  "dim",
 }
 
 METRIC_LABEL_ALIASES: dict[str, str] = {
@@ -128,6 +146,14 @@ class AutomationPanel(Widget):
     AutomationPanel #automation-logs {
         height: 1fr;
     }
+    AutomationPanel #logs-state-summary {
+        height: auto;
+        max-height: 6;
+        padding: 0 1;
+        background: $surface;
+        color: $text;
+        border-bottom: solid $surface-lighten-2;
+    }
     AutomationPanel .log-line {
         padding: 0 1;
         height: auto;
@@ -166,6 +192,10 @@ class AutomationPanel(Widget):
                 with HorizontalScroll(id="dag-scroll"):
                     yield AutomationDag(id="automation-dag")
             with TabPane("Logs", id="tab-logs"):
+                yield Static(
+                    "[dim]No automation running[/]",
+                    id="logs-state-summary",
+                )
                 with VerticalScroll(id="automation-logs"):
                     yield Static(
                         "Waiting for logs…",
@@ -185,6 +215,7 @@ class AutomationPanel(Widget):
         self._track_elapsed(state)
         self._maybe_auto_switch(state)
         self._refresh_header(state)
+        self._refresh_logs_state_summary(state)
         self.query_one("#phases-pane", CanonPhaseDiagram).state = state
         self.query_one("#automation-dag", AutomationDag).update_state(state)
         self.call_after_refresh(self._refresh_logs, state)
@@ -202,27 +233,15 @@ class AutomationPanel(Widget):
             self._user_picked_tab = True
 
     def _maybe_auto_switch(self, state: CanonState) -> None:
-        tabs = self.query_one("#automation-tabs", TabbedContent)
-
-        # Run phase: switch to logs exactly once, regardless of user navigation.
+        # Auto-switch to Logs exactly once when we reach the run phase.
+        # No other auto-switches: build phases stay on Phases, Flow tab is
+        # only reached by manual navigation.
         if state.is_run_phase and not self._switched_to_logs:
             self._switched_to_logs = True
+            tabs = self.query_one("#automation-tabs", TabbedContent)
             if tabs.active != "tab-logs":
                 self._auto_switching += 1
                 tabs.active = "tab-logs"
-            return
-
-        # Build phase: surface the Flow tab when strategy data first arrives,
-        # but only if the user hasn't manually chosen a tab yet.
-        if (
-            not self._user_picked_tab
-            and state.is_build_phase
-            and state.flow
-            and state.flow.steps
-            and tabs.active == "tab-phases"
-        ):
-            self._auto_switching += 1
-            tabs.active = "tab-flow"
 
     # ------------------------------------------------------------------
     # Header
@@ -237,29 +256,70 @@ class AutomationPanel(Widget):
     def _refresh_header(self, state: CanonState) -> None:
         header = self.query_one("#automation-header", Static)
         if not state.phase:
-            header.update("[dim]No automation running[/]")
+            header.update("[dim]○ idle · No automation running[/]")
             return
 
+        status = state.status or "idle"
+        status_color = STATUS_COLORS.get(status, "white")
         icon = PHASE_ICONS.get(state.phase, "◈")
-        phase = state.phase
+
+        parts = [
+            f"[{status_color}]● {status}[/]",
+            f"{icon} [bold]{state.phase}[/]",
+        ]
 
         flow = state.flow
         if flow and flow.steps:
             done = len(flow.completed)
             total = len(flow.steps)
-            position = f"step {min(done + 1, total)} of {total}"
-        else:
-            position = ""
+            parts.append(f"step {min(done + 1, total)} of {total}")
 
         elapsed = _format_elapsed(self._active_since)
-
-        parts = [f"{icon} {phase}"]
-        if position:
-            parts.append(position)
         if elapsed:
             parts.append(elapsed)
 
         header.update(" · ".join(parts))
+
+    def _refresh_logs_state_summary(self, state: CanonState) -> None:
+        """Rich state summary above the log stream — phase, status, metrics."""
+        summary = self.query_one("#logs-state-summary", Static)
+        if not state.phase:
+            summary.update("[dim]○ idle · No automation running[/]")
+            return
+
+        status = state.status or "idle"
+        status_color = STATUS_COLORS.get(status, "white")
+        icon = PHASE_ICONS.get(state.phase, "◈")
+
+        lines: list[str] = []
+        lines.append(
+            f"[{status_color}]● {status}[/]"
+            f" · {icon} [bold]{state.phase}[/]"
+            + (f" · iter {state.iteration}" if state.iteration else "")
+        )
+
+        flow = state.flow
+        if flow and flow.steps:
+            done = len(flow.completed)
+            total = len(flow.steps)
+            active = flow.active or "—"
+            step_line = f"  [dim]step {min(done + 1, total)} of {total}[/] · {active}"
+            elapsed = _format_elapsed(self._active_since)
+            if elapsed:
+                step_line += f" [dim]({elapsed})[/]"
+            lines.append(step_line)
+
+        if state.metrics:
+            metric_parts = [
+                f"{_humanize_metric_key(k)}: [bold]{v}[/]"
+                for k, v in state.metrics
+            ]
+            lines.append("  [dim]" + " · ".join(metric_parts) + "[/]")
+
+        if state.error:
+            lines.append(f"  [red bold]ERROR:[/] {state.error}")
+
+        summary.update("\n".join(lines))
 
     # ------------------------------------------------------------------
     # Logs

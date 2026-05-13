@@ -169,11 +169,6 @@ def _format_metric_chips(metrics: tuple[tuple[str, str], ...]) -> list[str]:
     return out
 
 
-def _all_build_done(state: CanonState) -> bool:
-    """True when we've left the build pipeline (phase is live, or build complete)."""
-    return state.phase == "live"
-
-
 class AutomationPanel(Widget):
     """Right-pane automation section: header + System tab + Flow tab.
 
@@ -199,12 +194,14 @@ class AutomationPanel(Widget):
     }
 
     AutomationPanel #automation-tabs {
-        height: 3fr;
-        min-height: 12;
+        height: auto;
+        max-height: 22;
     }
     AutomationPanel #system-pane {
         height: auto;
     }
+
+    /* Build: chip vs full DAG */
     AutomationPanel #build-collapsed {
         height: 1;
         padding: 0 1;
@@ -217,16 +214,27 @@ class AutomationPanel(Widget):
     AutomationPanel.build-collapsed #build-diagram {
         display: none;
     }
+
+    /* Live: chip vs full DAG. Default = chip visible, DAG hidden. */
+    AutomationPanel #live-collapsed {
+        height: 1;
+        padding: 0 1;
+        color: $text-muted;
+        display: block;
+    }
     AutomationPanel #live-diagram {
         display: none;
     }
-    AutomationPanel.seen-live #live-diagram {
+    AutomationPanel.live-expanded #live-collapsed {
+        display: none;
+    }
+    AutomationPanel.live-expanded #live-diagram {
         display: block;
     }
 
     AutomationPanel #automation-logs {
-        height: 2fr;
-        min-height: 6;
+        height: 1fr;
+        min-height: 8;
         border-top: solid $surface-lighten-2;
     }
     AutomationPanel .log-line {
@@ -279,6 +287,10 @@ class AutomationPanel(Widget):
                         id="build-collapsed",
                     )
                     yield CanonPhaseDiagram(mode="build", id="build-diagram")
+                    yield Static(
+                        "[dim]⬆ Live trading — not started[/]",
+                        id="live-collapsed",
+                    )
                     yield CanonPhaseDiagram(mode="live", id="live-diagram")
             with TabPane("Flow", id="tab-flow"):
                 with HorizontalScroll(id="dag-scroll"):
@@ -328,14 +340,29 @@ class AutomationPanel(Widget):
             self._seen_live = True
             if state.status:
                 self._last_live_status = state.status
-        if self._seen_live:
-            self.add_class("seen-live")
 
     def _refresh_collapse(self, state: CanonState) -> None:
-        if _all_build_done(state) or self._seen_live:
+        # Build collapses once we're in live or have ever been live.
+        if state.phase == "live" or self._seen_live:
             self.add_class("build-collapsed")
         else:
             self.remove_class("build-collapsed")
+
+        # Live expands only while we're currently in the live phase.
+        # Outside of live, show the chip — with last-status text if we've
+        # seen it, otherwise a neutral "not started" placeholder.
+        if state.phase == "live":
+            self.add_class("live-expanded")
+        else:
+            self.remove_class("live-expanded")
+            chip = self.query_one("#live-collapsed", Static)
+            if self._seen_live and self._last_live_status:
+                label = LIVE_STATUS_LABELS.get(
+                    self._last_live_status, self._last_live_status
+                )
+                chip.update(f"[cyan]⬆[/] Live trading — last: [bold]{label}[/]")
+            else:
+                chip.update("[dim]⬆ Live trading — not started[/]")
 
     # ------------------------------------------------------------------
     # Auto-switch — once per execution phase, when actively running.

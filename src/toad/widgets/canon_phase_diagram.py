@@ -146,11 +146,12 @@ class CanonPhaseDiagram(Widget):
 
     DEFAULT_CSS = """
     CanonPhaseDiagram {
-        height: 8;
+        height: auto;
         width: 1fr;
     }
     CanonPhaseDiagram #phases-scroll {
-        height: 1fr;
+        height: auto;
+        max-height: 8;
     }
     CanonPhaseDiagram #phases-dag {
         height: auto;

@@ -1200,13 +1200,20 @@ def verify_automation_panel(verbose: bool = False) -> tuple[bool, list[str], dic
                     f"_auto_switched_phase should be 'live', got {panel._auto_switched_phase!r}"
                 )
 
-            # Live persistence: phase reverts to 'run' — live diagram should still
-            # be visible (seen-live class on panel).
+            # Live persistence: phase reverts to 'run' — live chip should
+            # show last status (live-expanded class removed, chip visible).
             panel.state = CanonState(phase="run", status="complete", flow=flow)
             await pilot.pause()
-            results["seen_live_persists"] = panel.has_class("seen-live")
-            if not panel.has_class("seen-live"):
-                errors.append("after seeing live, seen-live class should persist")
+            results["seen_live_internal"] = panel._seen_live
+            results["live_expanded_dropped"] = not panel.has_class("live-expanded")
+            chip_text = str(app.query_one("#live-collapsed", Static).content)
+            results["chip_shows_last"] = "last" in chip_text.lower()
+            if not panel._seen_live:
+                errors.append("_seen_live should remain True after phase reverts")
+            if panel.has_class("live-expanded"):
+                errors.append("live-expanded class should be removed when phase != live")
+            if "last" not in chip_text.lower():
+                errors.append(f"live chip should show last status, got: {chip_text!r}")
 
             # State summary shows phase + status + metrics (zero filtered, errors kept)
             summary = app.query_one("#state-summary", Static)

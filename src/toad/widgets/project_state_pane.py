@@ -458,9 +458,9 @@ class ProjectStatePane(Vertical):
             yield SectionStatusBadge(
                 BadgeState.POLLING, id=BADGE_STATE, classes="section-badge"
             )
-            with TabbedContent(id=TABS_STATE):
-                with TabPane("Automation", id="tab-automation"):
-                    yield AutomationPanel(id="automation-panel")
+            # No TabbedContent wrapper — single panel, the outer pane tab
+            # already labels this section "Automation".
+            yield AutomationPanel(id="automation-panel")
 
         # --- Outreach section (conditional) ---
         if self._outreach_provider is not None:

@@ -132,7 +132,6 @@ class Agent(AgentBase):
         self._message_target: MessagePump | None = None
 
         self._terminal_count: int = 0
-        self._context_injected: bool = False
 
         log_filename: str = generate_datetime_filename(f"{agent['name']}", ".txt")
         if log_path := os.environ.get("TOAD_LOG"):
@@ -672,13 +671,11 @@ class Agent(AgentBase):
         prompt_content_blocks = await asyncio.to_thread(
             build_prompt, self.project_root_path, prompt
         )
-        if not self._context_injected:
-            self._context_injected = True
-            context = self._load_agent_context()
-            if context:
-                prompt_content_blocks.insert(
-                    0, {"type": "text", "text": context}
-                )
+        # Conductor + bundled agent_context are installed at the
+        # system-prompt level via ``acp_new_session``'s
+        # ``_meta.systemPrompt.append``. No need to re-inject them as
+        # user-prompt content here — that was the prior approach and it
+        # made the rules advisory rather than binding.
         return await self.acp_session_prompt(prompt_content_blocks)
 
     @staticmethod
@@ -742,11 +739,29 @@ class Agent(AgentBase):
             self.auth_methods = auth_methods
 
     async def acp_new_session(self) -> None:
-        """Create a new session."""
+        """Create a new session.
+
+        Conductor + bundled agent_context ride at the **system-prompt**
+        level via ``_meta.systemPrompt.append``. The adapter
+        (``claude-code-acp``) merges this text into the underlying
+        ``claude_code`` preset at session creation, so the rules are
+        binding for the agent. Injecting the same text as user-prompt
+        content (the prior approach) made the rules advisory and lost
+        conflicts with the preset's own defaults — see
+        ``docs/conductor-execution-contract.md`` for the analysis.
+        """
+        system_prompt_append = self._load_agent_context()
+        session_meta: dict | None = None
+        if system_prompt_append:
+            session_meta = {
+                "systemPrompt": {"append": system_prompt_append},
+            }
+
         with self.request():
             session_new_response = api.session_new(
                 str(self.project_root_path),
                 [],
+                _meta=session_meta,
             )
         response = await session_new_response.wait()
         assert response is not None

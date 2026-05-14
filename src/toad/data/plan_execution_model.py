@@ -298,11 +298,14 @@ class PlanExecutionModel:
         self._phase = self._derive_phase()
 
     def _is_terminal(self) -> bool:
-        if self._status in _TERMINAL_STATUSES:
-            return True
-        if self._verdict in _TERMINAL_VERDICTS:
-            return True
-        return False
+        # Only consider the plan terminal when the top-level ``status``
+        # field is explicitly terminal. Previously we also checked
+        # ``self._verdict in _TERMINAL_VERDICTS`` here, but that caused
+        # PlanFinished to fire as soon as ``finalReview.result`` was set
+        # — before the engine wrote ``status = "completed"``. The tab
+        # badge would freeze because a later poll (with the real
+        # "completed" status) was suppressed by ``_finished_emitted``.
+        return self._status in _TERMINAL_STATUSES
 
     def _derive_phase(self) -> str:
         if self._status == "completed":

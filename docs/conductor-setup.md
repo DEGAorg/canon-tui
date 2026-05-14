@@ -4,6 +4,14 @@ Conductor extends Toad with project management features: a socket controller
 for external automation, a Project State split-screen pane with a Gantt
 timeline, and agent context injection so AI agents can control the TUI.
 
+> **Heads up:** the agent canon-tui spawns is allowed to run deterministic
+> infrastructure scripts (canon-scaffold.sh, canon-cli, pnpm install)
+> directly — it does **not** delegate them. See
+> [`conductor-execution-contract.md`](conductor-execution-contract.md) for
+> the full contract, the `CANON_TUI` / `TOAD_CWD` env variables we set on
+> the spawned agent, and how to file a tool-relay bug if the agent ever
+> reports work it did not actually do.
+
 ## Prerequisites
 
 - Python 3.14+ with the Toad venv set up (see main README)

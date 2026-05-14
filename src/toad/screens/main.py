@@ -32,7 +32,7 @@ from toad.widgets.plan import Plan
 from toad.widgets.throbber import Throbber
 from toad.widgets.conversation import Conversation
 from toad.widgets.project_directory_tree import ProjectDirectoryTree
-from toad.widgets.builder_view import BuilderView
+from toad.widgets.automation_panel import AutomationPanel
 from toad.widgets.canon_state import CanonState, CanonStateWidget
 from toad.widgets.project_state_pane import ProjectStatePane
 
@@ -320,10 +320,10 @@ class MainScreen(Screen, can_focus=False):
         pane.activate_tab(tab_id)
 
     async def _forward_canon_state(self, state: "CanonState") -> None:
-        """Forward canon state directly to State view."""
+        """Forward canon state to the AutomationPanel reactive attribute."""
         pane = self.query_one("#project_state_pane", ProjectStatePane)
-        for view in pane.query(BuilderView):
-            await view._render_state(state)
+        for panel in pane.query(AutomationPanel):
+            panel.state = state
 
     def action_show_planning(self) -> None:
         """Open pane and show Planning section (Board tab)."""
@@ -337,9 +337,17 @@ class MainScreen(Screen, can_focus=False):
         """Open pane and show Timeline tab inside Planning."""
         self._show_section_tab("section-planning", "tab-timeline")
 
+    def action_show_automation(self) -> None:
+        """Open pane and show Automation section."""
+        self._show_section_tab("section-state", "tab-automation")
+
+    # Backward-compat: older canon-start.md scripts in claude-code-config
+    # still call screen.show_state / screen.hide_state. Forward to the
+    # new automation actions so the panel opens correctly until those
+    # scripts are updated.
     def action_show_state(self) -> None:
-        """Open pane and show State section."""
-        self._show_section_tab("section-state", "tab-builder")
+        """Alias of show_automation for older canon-start.md scripts."""
+        self.action_show_automation()
 
     def action_show_outreach(self) -> None:
         """Open pane and show Outreach section.
@@ -374,9 +382,13 @@ class MainScreen(Screen, can_focus=False):
         """Hide Planning section (Timeline is a tab inside it)."""
         self._hide_section("section-planning")
 
-    def action_hide_state(self) -> None:
-        """Hide the State section."""
+    def action_hide_automation(self) -> None:
+        """Hide the Automation section."""
         self._hide_section("section-state")
+
+    def action_hide_state(self) -> None:
+        """Alias of hide_automation for older canon-start.md scripts."""
+        self.action_hide_automation()
 
     def action_hide_outreach(self) -> None:
         """Hide the Outreach section."""

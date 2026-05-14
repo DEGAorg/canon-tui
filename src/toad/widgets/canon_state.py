@@ -33,6 +33,23 @@ class LogEntry:
 
 
 @dataclass(frozen=True)
+class FlowNode:
+    """A single node in the automation flow DAG."""
+
+    id: str
+    label: str
+    type: str = "build"  # build | gate | deploy | review
+
+
+@dataclass(frozen=True)
+class FlowEdge:
+    """A directed edge in the automation flow DAG."""
+
+    from_id: str
+    to_id: str
+
+
+@dataclass(frozen=True)
 class FlowState:
     """Pipeline flow state from .canon/flow.json."""
 
@@ -40,6 +57,38 @@ class FlowState:
     labels: tuple[tuple[str, str], ...] = ()
     active: str = ""
     completed: tuple[str, ...] = ()
+    # Optional DAG shape — absent means linear fallback from steps.
+    nodes: tuple[FlowNode, ...] = ()
+    edges: tuple[FlowEdge, ...] = ()
+
+    def node_status(self, node_id: str) -> str:
+        """Derive per-node status from active/completed. No runner change needed."""
+        if node_id in self.completed:
+            return "done"
+        if node_id == self.active:
+            return "running"
+        return "pending"
+
+    def effective_nodes(self) -> tuple[FlowNode, ...]:
+        """Declared nodes or linear fallback synthesized from steps."""
+        if self.nodes:
+            return self.nodes
+        return tuple(FlowNode(id=s, label=self._label_for(s)) for s in self.steps)
+
+    def effective_edges(self) -> tuple[FlowEdge, ...]:
+        """Declared edges or linear chain synthesized from steps."""
+        if self.edges:
+            return self.edges
+        return tuple(
+            FlowEdge(from_id=self.steps[i], to_id=self.steps[i + 1])
+            for i in range(len(self.steps) - 1)
+        )
+
+    def _label_for(self, step: str) -> str:
+        for k, v in self.labels:
+            if k == step:
+                return v
+        return step.replace("_", " ").title()
 
 
 @dataclass(frozen=True)
@@ -67,11 +116,29 @@ def _parse_flow(data: dict) -> FlowState:
     """Parse .canon/flow.json into a FlowState."""
     labels_raw = data.get("labels", {})
     labels = tuple((str(k), str(v)) for k, v in labels_raw.items())
+
+    nodes = tuple(
+        FlowNode(
+            id=n["id"],
+            label=n.get("label", n["id"]),
+            type=n.get("type", "build"),
+        )
+        for n in data.get("nodes", [])
+        if "id" in n
+    )
+    edges = tuple(
+        FlowEdge(from_id=e["from"], to_id=e["to"])
+        for e in data.get("edges", [])
+        if "from" in e and "to" in e
+    )
+
     return FlowState(
         steps=tuple(data.get("steps", [])),
         labels=labels,
         active=data.get("active", ""),
         completed=tuple(data.get("completed", [])),
+        nodes=nodes,
+        edges=edges,
     )
 
 
@@ -128,7 +195,7 @@ class CanonStateWidget(Widget):
             super().__init__()
             self.state = state
 
-    state: reactive[CanonState] = reactive(
+    state: reactive[CanonState] = reactive(  # type: ignore[assignment]
         CanonState, always_update=True
     )
 

@@ -58,17 +58,31 @@ class AccountStat:
 
 
 @dataclass(frozen=True, slots=True)
+class EmailProspectsCard:
+    """Totals for email-sourced prospects (ETHGlobal + Devpost).
+
+    None is used when the email columns are absent (pre-migration DB).
+    """
+
+    total: int
+    ethglobal: int
+    devpost: int
+
+
+@dataclass(frozen=True, slots=True)
 class OutreachSnapshot:
     """Complete payload rendered by the Outreach panel.
 
     `sends` and `accounts` are None when the `send_log` table is absent in
     the connected DB — the panel hides those cards instead of crashing.
+    `email_prospects` is None on pre-migration DBs that lack the email column.
     """
 
     prospects: ProspectsCard
     sends: SendsCard | None
     hackathons: list[HackathonStat]
     accounts: list[AccountStat] | None
+    email_prospects: EmailProspectsCard | None = None
 
 
 @runtime_checkable

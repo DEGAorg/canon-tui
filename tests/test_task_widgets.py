@@ -510,10 +510,10 @@ class TestPanelIntentDetection:
         # "the plan" (singular) is the exec plan in Context section
         assert self._detect("show me the plan") == ("plan", None)
 
-    def test_show_me_timeline_files_state(self) -> None:
+    def test_show_me_timeline_files_automation(self) -> None:
         assert self._detect("show me the timeline") == ("timeline", None)
         assert self._detect("show me the files") == ("files", None)
-        assert self._detect("show me the state") == ("state", None)
+        assert self._detect("show me the automation") == ("automation", None)
 
     def test_priority_filter_extracted(self) -> None:
         pid, filters = self._detect("show me P1 tasks")

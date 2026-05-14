@@ -21,9 +21,19 @@ def initialize(
 
 @API.method(name="session/new")
 def session_new(
-    cwd: str, mcpServers: list[protocol.McpServer]
+    cwd: str,
+    mcpServers: list[protocol.McpServer],
+    _meta: dict | None = None,
 ) -> protocol.NewSessionResponse:
-    """https://agentclientprotocol.com/protocol/session-setup#session-id"""
+    """https://agentclientprotocol.com/protocol/session-setup#session-id
+
+    The optional ``_meta`` carries adapter-specific extensions. For
+    ``claude-code-acp`` it may include ``systemPrompt`` to override or
+    append to the default ``claude_code`` preset — see
+    ``acp-agent.js`` (``params._meta.systemPrompt``). Pass either
+    ``{"systemPrompt": "<text>"}`` to replace the preset entirely or
+    ``{"systemPrompt": {"append": "<text>"}}`` to append.
+    """
     ...
 
 

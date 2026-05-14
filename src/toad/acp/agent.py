@@ -505,6 +505,7 @@ class Agent(AgentBase):
         PIPE = asyncio.subprocess.PIPE
         env = os.environ.copy()
         env["TOAD_CWD"] = str(Path("./").absolute())
+        env["CANON_TUI"] = "1"
 
         if (command := self.command) is None:
             self.post_message(

@@ -505,6 +505,13 @@ class Agent(AgentBase):
         PIPE = asyncio.subprocess.PIPE
         env = os.environ.copy()
         env["TOAD_CWD"] = str(Path("./").absolute())
+        # Force the Claude Agent SDK into "standard" tool mode so the
+        # ACP-namespaced tools (Read/Write/Edit/Bash/BashOutput/KillShell
+        # registered by claude-code-acp's MCP server) are eager-loaded
+        # instead of deferred behind ToolSearch. Deferred MCP tools were
+        # being skipped, causing the agent to narrate fabricated results.
+        # See docs/canon-tui-fabrication-problem.md.
+        env.setdefault("ENABLE_TOOL_SEARCH", "false")
 
         if (command := self.command) is None:
             self.post_message(

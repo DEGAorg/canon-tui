@@ -23,6 +23,7 @@ from toad.acp import protocol
 from toad.acp import api
 from toad.acp.api import API
 from toad.acp import messages
+from toad.acp.env_prep import build_agent_subprocess_env
 from toad.acp.prompt import build as build_prompt
 from toad.db import DB
 from toad import paths
@@ -65,9 +66,7 @@ def generate_datetime_filename(
     return file_name_stem + suffix
 
 
-async def inject_subagent_completion(
-    conductor: Any, name: str, summary: str
-) -> None:
+async def inject_subagent_completion(conductor: Any, name: str, summary: str) -> None:
     """Post a synthetic completion message into the Conductor's session.
 
     Format: ``[subagent <name> completed: <summary>]`` — matches
@@ -503,15 +502,7 @@ class Agent(AgentBase):
         """Task to communicate with the agent subprocess."""
 
         PIPE = asyncio.subprocess.PIPE
-        env = os.environ.copy()
-        env["TOAD_CWD"] = str(Path("./").absolute())
-        # Force the Claude Agent SDK into "standard" tool mode so the
-        # ACP-namespaced tools (Read/Write/Edit/Bash/BashOutput/KillShell
-        # registered by claude-code-acp's MCP server) are eager-loaded
-        # instead of deferred behind ToolSearch. Deferred MCP tools were
-        # being skipped, causing the agent to narrate fabricated results.
-        # See docs/canon-tui-fabrication-problem.md.
-        env.setdefault("ENABLE_TOOL_SEARCH", "false")
+        env = build_agent_subprocess_env(os.environ, str(Path("./").absolute()))
 
         if (command := self.command) is None:
             self.post_message(
@@ -706,9 +697,7 @@ class Agent(AgentBase):
         socket_text = ""
         try:
             socket_text = (
-                files("toad.data")
-                .joinpath("agent_context.md")
-                .read_text("utf-8")
+                files("toad.data").joinpath("agent_context.md").read_text("utf-8")
             )
         except Exception:
             pass

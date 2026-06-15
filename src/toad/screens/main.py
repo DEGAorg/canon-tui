@@ -17,6 +17,7 @@ from textual.command import Hit, Hits, Provider, DiscoveryHit
 from textual.content import Content
 from textual.events import ScreenResume
 from textual.screen import Screen
+from textual.css.query import NoMatches
 from textual.reactive import var, reactive
 from textual.widgets import Footer, OptionList, DirectoryTree, Tree
 from textual import containers
@@ -35,6 +36,34 @@ from toad.widgets.project_directory_tree import ProjectDirectoryTree
 from toad.widgets.automation_panel import AutomationPanel
 from toad.widgets.canon_state import CanonState, CanonStateWidget
 from toad.widgets.project_state_pane import ProjectStatePane
+
+
+# Right-pane width bounds. Char-step keybindings clamp to [40, 100];
+# percentage values from canon-ctl clamp to [20%, 80%].
+PANE_WIDTH_DEFAULT = "50%"
+PANE_WIDTH_MIN_CHARS = 40
+PANE_WIDTH_MAX_CHARS = 100
+PANE_WIDTH_STEP_CHARS = 5
+PANE_WIDTH_MIN_PCT = 20
+PANE_WIDTH_MAX_PCT = 80
+
+
+def _parse_percentage(width: str) -> int:
+    """Validate ``width`` as a percentage string in the allowed range."""
+    if not width.endswith("%"):
+        raise ValueError(
+            f"width must be a percentage like '40%', got {width!r}"
+        )
+    try:
+        pct = int(width[:-1])
+    except ValueError as exc:
+        raise ValueError(f"invalid percentage: {width!r}") from exc
+    if not PANE_WIDTH_MIN_PCT <= pct <= PANE_WIDTH_MAX_PCT:
+        raise ValueError(
+            f"width must be between {PANE_WIDTH_MIN_PCT}% "
+            f"and {PANE_WIDTH_MAX_PCT}%, got {pct}%"
+        )
+    return pct
 
 
 class ModeProvider(Provider):
@@ -84,6 +113,8 @@ class MainScreen(Screen, can_focus=False):
         Binding("ctrl+b,f20", "show_sidebar", "Sidebar"),
         Binding("ctrl+g", "toggle_project_state", "Project Status"),
         Binding("ctrl+h", "go_home", "Home"),
+        Binding("comma", "narrow_pane", "Narrow pane", show=False),
+        Binding("full_stop", "widen_pane", "Widen pane", show=False),
         Binding(
             "ctrl+left_square_bracket",
             "session_previous",
@@ -108,6 +139,7 @@ class MainScreen(Screen, can_focus=False):
     column_width = reactive(100)
     scrollbar = reactive("")
     split_enabled: reactive[bool] = reactive(False)
+    pane_width: reactive[str] = reactive(PANE_WIDTH_DEFAULT, init=False)
     project_path: var[Path] = var(Path("./").expanduser().absolute())
 
     app = getters.app(ToadApp)
@@ -250,6 +282,13 @@ class MainScreen(Screen, can_focus=False):
 
         pane = self.query_one("#project_state_pane", ProjectStatePane)
         pane.configure_plan_execution(self._make_plan_execution_factory(pane))
+        saved_width = (
+            self.app.settings.get("ui.pane_width", str) or PANE_WIDTH_DEFAULT
+        )
+        pane.styles.width = saved_width
+        # Bypass the watcher on the initial load so we don't immediately
+        # re-persist the value we just read.
+        self.set_reactive(MainScreen.pane_width, saved_width)
 
     def _make_plan_execution_factory(
         self, target: ProjectStatePane
@@ -574,6 +613,63 @@ class MainScreen(Screen, can_focus=False):
         await self.app.save_settings()
         await self.app.switch_mode("store")
 
+
+    def watch_pane_width(self, width: str) -> None:
+        """Apply the right-pane width and persist it to user settings."""
+        try:
+            pane = self.query_one("#project_state_pane", ProjectStatePane)
+        except NoMatches:
+            return
+        pane.styles.width = width
+        self.app.settings.set("ui.pane_width", width)
+        self.app.call_later(self.app.save_settings)
+
+    def _current_pane_chars(self) -> int:
+        """Return the right pane's current rendered width in cells.
+
+        Falls back to the midpoint of the allowed range when the pane
+        hasn't been laid out yet (e.g. width keybinding pressed before
+        the pane has ever been opened).
+        """
+        try:
+            pane = self.query_one("#project_state_pane", ProjectStatePane)
+        except NoMatches:
+            return (PANE_WIDTH_MIN_CHARS + PANE_WIDTH_MAX_CHARS) // 2
+        rendered = pane.size.width
+        if rendered > 0:
+            return rendered
+        return (PANE_WIDTH_MIN_CHARS + PANE_WIDTH_MAX_CHARS) // 2
+
+    def _clamp_chars(self, chars: int) -> int:
+        return max(min(chars, PANE_WIDTH_MAX_CHARS), PANE_WIDTH_MIN_CHARS)
+
+    def action_widen_pane(self) -> None:
+        """Increase the right pane width by one step (clamped)."""
+        new_chars = self._clamp_chars(
+            self._current_pane_chars() + PANE_WIDTH_STEP_CHARS
+        )
+        self.pane_width = str(new_chars)
+
+    def action_narrow_pane(self) -> None:
+        """Decrease the right pane width by one step (clamped)."""
+        new_chars = self._clamp_chars(
+            self._current_pane_chars() - PANE_WIDTH_STEP_CHARS
+        )
+        self.pane_width = str(new_chars)
+
+    def action_set_pane_width(self, width: str) -> str:
+        """Set the right pane width to a percentage like ``"40%"``.
+
+        Raises ``ValueError`` if ``width`` is not in ``20%``–``80%``.
+        Returns the applied width so the socket layer can echo it.
+        """
+        _parse_percentage(width)
+        self.pane_width = width
+        return width
+
+    def action_get_pane_width(self) -> str:
+        """Return the current right-pane width string."""
+        return self.pane_width
 
     def watch_column(self, column: bool) -> None:
         self.conversation.styles.max_width = (

@@ -29,7 +29,7 @@ from toad.growth.protocol import GrowthPanel
 from toad.growth.registry import discover as discover_growth
 from toad.outreach.protocol import OutreachInfoProvider, OutreachSnapshot
 from toad.outreach.registry import discover as discover_outreach
-from toad.widgets.builder_view import BuilderView
+from toad.widgets.automation_panel import AutomationPanel
 from toad.widgets.canon_state import CanonStateWidget
 from toad.widgets.filter_toolbar import FilterToolbar, FilterState, filter_tasks
 from toad.widgets.gantt_timeline import GanttTimeline
@@ -120,7 +120,7 @@ class _SectionDef:
 SECTIONS: list[_SectionDef] = [
     _SectionDef(SECTION_CONTEXT, "Context"),
     _SectionDef(SECTION_PLANNING, "Planning"),
-    _SectionDef(SECTION_STATE, "State"),
+    _SectionDef(SECTION_STATE, "Automation"),
 ]
 
 
@@ -145,9 +145,7 @@ PANEL_ROUTES: dict[str, tuple[str, str]] = {
     "bugs": (SECTION_PLANNING, "tab-tasks"),
     "features": (SECTION_PLANNING, "tab-tasks"),
     "github": (SECTION_PLANNING, "tab-tasks"),
-    "status": (SECTION_PLANNING, "tab-tasks"),
-    "state": (SECTION_STATE, "tab-builder"),
-    "builder": (SECTION_STATE, "tab-builder"),
+    "automation": (SECTION_STATE, "tab-automation"),
     "outreach": (SECTION_OUTREACH, "tab-outreach"),
     "growth": (SECTION_GROWTH, "tab-growth"),
     # Plan execution: dynamic tab-per-slug, so the tab id is the
@@ -207,7 +205,6 @@ class ProjectStatePane(Vertical):
     DEFAULT_CSS = """
     ProjectStatePane {
         display: none;
-        width: 50%;
         border-left: tall $primary 30%;
     }
 
@@ -460,9 +457,9 @@ class ProjectStatePane(Vertical):
             yield SectionStatusBadge(
                 BadgeState.POLLING, id=BADGE_STATE, classes="section-badge"
             )
-            with TabbedContent(id=TABS_STATE):
-                with TabPane("State", id="tab-builder"):
-                    yield BuilderView(id="builder-view")
+            # No TabbedContent wrapper — single panel, the outer pane tab
+            # already labels this section "Automation".
+            yield AutomationPanel(id="automation-panel")
 
         # --- Outreach section (conditional) ---
         if self._outreach_provider is not None:
@@ -474,6 +471,7 @@ class ProjectStatePane(Vertical):
                     with TabPane("Outreach", id="tab-outreach"):
                         with Vertical(id="outreach-container"):
                             yield StatLine("Prospects", id="outreach-prospects")
+                            yield StatLine("Email leads", id="outreach-email-prospects")
                             yield Histogram("Sends · 24h", id="outreach-sends")
                             yield RankedBar(
                                 "Hackathons (top 5)", id="outreach-hackathons"
@@ -988,6 +986,23 @@ class ProjectStatePane(Vertical):
                 ("pending", p.pending, "warning"),
             ),
         )
+
+        try:
+            email_card = self.query_one("#outreach-email-prospects", StatLine)
+            ep = snapshot.email_prospects
+            if ep is None:
+                email_card.display = False
+            else:
+                email_card.display = True
+                email_card.set_data(
+                    ep.total,
+                    (
+                        ("ethglobal", ep.ethglobal, "success"),
+                        ("devpost", ep.devpost, "warning"),
+                    ),
+                )
+        except NoMatches:
+            pass
 
         if snapshot.sends is None:
             sends.display = False

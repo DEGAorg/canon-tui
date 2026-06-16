@@ -156,6 +156,20 @@ async def _dispatch(app: App, request: dict[str, Any]) -> dict[str, Any]:
             else:
                 await app.screen.action_close_subagent_tab(name=tab_name)
             return {"ok": True}
+        if bare_name == "set_pane_width":
+            args = request.get("args")
+            if not isinstance(args, dict):
+                return {"error": "'set_pane_width' requires 'args' object"}
+            width = args.get("width")
+            if not isinstance(width, str):
+                return {"error": "'set_pane_width' requires 'args.width' string"}
+            try:
+                app.screen.action_set_pane_width(width)
+            except ValueError as exc:
+                return {"error": str(exc)}
+            return {"ok": True}
+        if bare_name == "get_pane_width":
+            return {"ok": True, "width": app.screen.action_get_pane_width()}
         await app.run_action(name)
         return {"ok": True}
 
